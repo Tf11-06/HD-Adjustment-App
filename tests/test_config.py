@@ -1,6 +1,5 @@
 import json
 import os
-import tempfile
 import pytest
 import config
 
@@ -24,6 +23,8 @@ def test_load_config_reads_existing_file():
         json.dump(data, f)
     cfg = config.load_config()
     assert cfg["sheet_id"] == "abc123"
+    assert cfg["credentials_file"] == "creds.json"
+    assert cfg["worksheet_name"] == "Sheet1"
 
 
 def test_load_config_fills_missing_keys():

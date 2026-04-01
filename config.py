@@ -13,8 +13,15 @@ _DEFAULTS = {
 def load_config() -> dict:
     if not os.path.exists(CONFIG_FILE):
         return _DEFAULTS.copy()
-    with open(CONFIG_FILE, "r") as f:
-        data = json.load(f)
+    try:
+        with open(CONFIG_FILE, "r") as f:
+            data = json.load(f)
+    except json.JSONDecodeError:
+        print(f"Warning: config.json is malformed. Using defaults.")
+        return _DEFAULTS.copy()
+    if not isinstance(data, dict):
+        print(f"Warning: config.json has unexpected format. Using defaults.")
+        return _DEFAULTS.copy()
     for key, val in _DEFAULTS.items():
         data.setdefault(key, val)
     return data
