@@ -66,9 +66,118 @@ def _parse_header(text: str) -> dict:
 
 def _parse_line_items_from_tables(table_rows: list) -> list[dict]:
     """Extract line items from pdfplumber table data."""
-    return []  # implemented in Task 4
+    if not table_rows:
+        return []
+
+    # Find header row: contains "SKU" somewhere
+    header_idx = None
+    for i, row in enumerate(table_rows):
+        if row and any(cell and "SKU" in str(cell).upper() for cell in row):
+            header_idx = i
+            break
+    if header_idx is None:
+        return []
+
+    header_row = table_rows[header_idx]
+
+    def col(row, *keywords):
+        """Return cell value from first column whose header contains any keyword."""
+        for kw in keywords:
+            for i, h in enumerate(header_row):
+                if h and kw.upper() in str(h).upper():
+                    if i < len(row):
+                        return str(row[i]).strip() if row[i] is not None else ""
+        return ""
+
+    items = []
+    for row in table_rows[header_idx + 1:]:
+        if not row:
+            continue
+        if any(cell and "ALLOWANCE" in str(cell).upper() for cell in row):
+            break
+        if all(cell is None or str(cell).strip() == "" for cell in row):
+            continue
+
+        qty_raw = col(row, "QTY")
+        qty, unit = _parse_qty_unit(qty_raw)
+        price_raw = col(row, "UNIT PRICE")
+        unit_price = _parse_ucp(price_raw)
+
+        item = {
+            "SKU":               col(row, "SKU"),
+            "Vendor PN":         col(row, "VENDOR PN"),
+            "UPC/GTIN":          col(row, "UPC"),
+            "Adjustment Reason": col(row, "ADJUSTMENT REASON"),
+            "Sellers Invoice #": col(row, "SELLERS INVOICE"),
+            "Line C/D":          col(row, "CREDIT DEBIT"),
+            "QTY":               qty,
+            "Unit":              unit,
+            "Unit Price":        unit_price,
+            "Item Total":        col(row, "ITEM TOTAL"),
+        }
+        items.append(item)
+
+    return items
 
 
 def _parse_line_items_from_text(text: str) -> list[dict]:
-    """Fallback: extract line items from raw text."""
-    return []  # implemented in Task 4
+    """Fallback text parser for line items between header row and ALLOWANCE section."""
+    header_pattern = re.search(
+        r'(LINE\s+SKU\s+VENDOR\s+PN.+?)\n(.+?)(?:ALLOWANCE AND CHARGES|$)',
+        text, re.IGNORECASE | re.DOTALL
+    )
+    if not header_pattern:
+        return []
+
+    item_block = header_pattern.group(2).strip()
+    items = []
+    for line in item_block.splitlines():
+        line = line.strip()
+        if not line:
+            continue
+        cd_match = re.search(r'(D - Debit|C - Credit)', line)
+        total_match = re.search(r'([\d]+\.[\d]{2})\s*$', line)
+        qty_match = re.search(r'CREDIT DEBIT QTY:\s*(\d+)\s+(\w+)', line)
+        ucp_match = re.search(r'UCP:\s*([\d.]+)', line)
+        inv_match = re.search(r'(\d{4})\s+(?:D - Debit|C - Credit)', line)
+        tokens = re.findall(r'\b\d{4,7}\b', line)
+
+        item = {
+            "SKU":               tokens[0] if tokens else "",
+            "Vendor PN":         tokens[1] if len(tokens) > 1 else "",
+            "UPC/GTIN":          "",
+            "Adjustment Reason": "",
+            "Sellers Invoice #": inv_match.group(1) if inv_match else "",
+            "Line C/D":          cd_match.group(1) if cd_match else "",
+            "QTY":               qty_match.group(1) if qty_match else "",
+            "Unit":              qty_match.group(2) if qty_match else "",
+            "Unit Price":        ucp_match.group(1) if ucp_match else "",
+            "Item Total":        total_match.group(1) if total_match else "",
+        }
+        items.append(item)
+
+    return items
+
+
+def _parse_qty_unit(raw: str) -> tuple[str, str]:
+    """Extract numeric qty and unit from 'CREDIT DEBIT QTY: 12 EA' -> ('12', 'EA')."""
+    if not raw:
+        return "", ""
+    m = re.search(r'QTY:\s*(\d+)\s+(\w+)', raw, re.IGNORECASE)
+    if m:
+        return m.group(1), m.group(2)
+    m = re.search(r'(\d+)\s*(\w*)', raw)
+    if m:
+        return m.group(1), m.group(2)
+    return "", ""
+
+
+def _parse_ucp(raw: str) -> str:
+    """Extract UCP value from 'UCP: 3.34 / INV: 3.3399' -> '3.34'."""
+    if not raw:
+        return ""
+    m = re.search(r'UCP:\s*([\d.]+)', raw, re.IGNORECASE)
+    if m:
+        return m.group(1)
+    m = re.search(r'([\d.]+)', raw)
+    return m.group(1) if m else ""
