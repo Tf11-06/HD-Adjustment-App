@@ -1,0 +1,8 @@
+pdfplumber
+gspread
+google-auth
+google-auth-oauthlib
+customtkinter
+tkinterdnd2
+pyinstaller
+pytest
