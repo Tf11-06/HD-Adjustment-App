@@ -3,6 +3,10 @@ import threading
 import tkinter as tk
 from tkinter import filedialog, messagebox
 from datetime import datetime
+import platform
+
+FONT_FAMILY = "Helvetica Neue" if platform.system() == "Darwin" else "Segoe UI"
+
 import customtkinter as ctk
 from tkinterdnd2 import TkinterDnD, DND_FILES
 import pdfplumber
@@ -49,12 +53,12 @@ class HDProcessorApp(TkinterDnD.Tk):
         title_block = tk.Frame(header, bg=BG)
         title_block.pack(side="left")
         tk.Label(title_block, text="HD Adjustment Processor",
-                 font=("Segoe UI", 14, "bold"), bg=BG, fg=TEXT_MAIN).pack(anchor="w")
+                 font=(FONT_FAMILY, 14, "bold"), bg=BG, fg=TEXT_MAIN).pack(anchor="w")
         tk.Label(title_block, text="Klear Concepts — Home Depot Vendor Tool",
-                 font=("Segoe UI", 10), bg=BG, fg=TEXT_MUTED).pack(anchor="w")
+                 font=(FONT_FAMILY, 10), bg=BG, fg=TEXT_MUTED).pack(anchor="w")
 
         settings_btn = tk.Button(
-            header, text="⚙  Settings", font=("Segoe UI", 10),
+            header, text="⚙  Settings", font=(FONT_FAMILY, 10),
             bg="#e2e8f2", fg=TEXT_MUTED, relief="flat", bd=0,
             padx=10, pady=4, cursor="hand2",
             command=self._open_settings
@@ -70,32 +74,32 @@ class HDProcessorApp(TkinterDnD.Tk):
         self.drop_frame.pack(fill="x", padx=20, pady=(14, 0), ipady=24)
         self.drop_frame.bind("<Button-1>", self._on_click_browse)
 
-        tk.Label(self.drop_frame, text="⬇", font=("Segoe UI", 22),
+        tk.Label(self.drop_frame, text="⬇", font=(FONT_FAMILY, 22),
                  bg=DROP_BG, fg=ACCENT).pack()
         tk.Label(self.drop_frame, text="Drop PDF(s) here",
-                 font=("Segoe UI", 12, "bold"), bg=DROP_BG, fg=TEXT_MAIN).pack()
+                 font=(FONT_FAMILY, 12, "bold"), bg=DROP_BG, fg=TEXT_MAIN).pack()
         tk.Label(self.drop_frame, text="or click to browse",
-                 font=("Segoe UI", 10), bg=DROP_BG, fg=TEXT_MUTED).pack()
+                 font=(FONT_FAMILY, 10), bg=DROP_BG, fg=TEXT_MUTED).pack()
 
         # Status card
         status_card = tk.Frame(self, bg=CARD_BG, bd=1,
                                highlightbackground=BORDER, highlightthickness=1)
         status_card.pack(fill="x", padx=20, pady=(12, 0), ipady=6)
-        tk.Label(status_card, text="STATUS", font=("Segoe UI", 8),
+        tk.Label(status_card, text="STATUS", font=(FONT_FAMILY, 8),
                  bg=CARD_BG, fg=TEXT_MUTED).pack(anchor="w", padx=10, pady=(6, 0))
         self.status_label = tk.Label(
             status_card, text="Ready — drop a PDF to begin",
-            font=("Segoe UI", 11), bg=CARD_BG, fg=TEXT_MUTED, anchor="w"
+            font=(FONT_FAMILY, 11), bg=CARD_BG, fg=TEXT_MUTED, anchor="w"
         )
         self.status_label.pack(anchor="w", padx=10, pady=(0, 6))
 
         # Last processed row
         last_row = tk.Frame(self, bg=BG)
         last_row.pack(fill="x", padx=22, pady=(10, 0))
-        tk.Label(last_row, text="Last processed: ", font=("Segoe UI", 10),
+        tk.Label(last_row, text="Last processed: ", font=(FONT_FAMILY, 10),
                  bg=BG, fg=TEXT_MUTED).pack(side="left")
         self.last_label = tk.Label(last_row, text="—",
-                                   font=("Segoe UI", 10), bg=BG, fg=TEXT_MAIN)
+                                   font=(FONT_FAMILY, 10), bg=BG, fg=TEXT_MAIN)
         self.last_label.pack(side="left")
 
     def set_status(self, message: str, color: str = TEXT_MUTED):
@@ -156,7 +160,7 @@ class HDProcessorApp(TkinterDnD.Tk):
         msg = tk.Label(
             win,
             text=f"Invoice #{invoice_num} already exists in the sheet.\nAdd anyway or skip?",
-            font=("Segoe UI", 11), bg=BG, fg=TEXT_MAIN, justify="center", wraplength=360
+            font=(FONT_FAMILY, 11), bg=BG, fg=TEXT_MAIN, justify="center", wraplength=360
         )
         msg.pack(pady=(20, 12))
 
@@ -173,9 +177,9 @@ class HDProcessorApp(TkinterDnD.Tk):
             win.destroy()
             self._modal_event.set()
 
-        tk.Button(btn_row, text="Add Anyway", font=("Segoe UI", 10), bg=ACCENT, fg="white",
+        tk.Button(btn_row, text="Add Anyway", font=(FONT_FAMILY, 10), bg=ACCENT, fg="white",
                   relief="flat", padx=14, pady=5, cursor="hand2", command=on_add).pack(side="left", padx=6)
-        tk.Button(btn_row, text="Skip", font=("Segoe UI", 10), bg="#e2e8f2", fg=TEXT_MAIN,
+        tk.Button(btn_row, text="Skip", font=(FONT_FAMILY, 10), bg="#e2e8f2", fg=TEXT_MAIN,
                   relief="flat", padx=14, pady=5, cursor="hand2", command=on_skip).pack(side="left", padx=6)
 
     def _run_batch(self, paths: list[str]):
@@ -296,29 +300,29 @@ class SettingsWindow(tk.Toplevel):
         self._build()
 
     def _build(self):
-        tk.Label(self, text="Settings", font=("Segoe UI", 13, "bold"),
+        tk.Label(self, text="Settings", font=(FONT_FAMILY, 13, "bold"),
                  bg=BG, fg=TEXT_MAIN).pack(anchor="w", padx=20, pady=(16, 10))
 
         cfg = config.load_config()
 
-        tk.Label(self, text="Google Sheet ID", font=("Segoe UI", 10),
+        tk.Label(self, text="Google Sheet ID", font=(FONT_FAMILY, 10),
                  bg=BG, fg=TEXT_MUTED).pack(anchor="w", padx=20)
         self.sheet_id_var = tk.StringVar(value=cfg.get("sheet_id", ""))
-        tk.Entry(self, textvariable=self.sheet_id_var, font=("Segoe UI", 10),
+        tk.Entry(self, textvariable=self.sheet_id_var, font=(FONT_FAMILY, 10),
                  width=44, bd=1, relief="solid").pack(padx=20, pady=(2, 10), anchor="w")
 
         tk.Label(self, text="Credentials File (service_account.json)",
-                 font=("Segoe UI", 10), bg=BG, fg=TEXT_MUTED).pack(anchor="w", padx=20)
+                 font=(FONT_FAMILY, 10), bg=BG, fg=TEXT_MUTED).pack(anchor="w", padx=20)
         creds_row = tk.Frame(self, bg=BG)
         creds_row.pack(anchor="w", padx=20, pady=(2, 0))
         self.creds_var = tk.StringVar(value=cfg.get("credentials_file", "service_account.json"))
-        tk.Entry(creds_row, textvariable=self.creds_var, font=("Segoe UI", 10),
+        tk.Entry(creds_row, textvariable=self.creds_var, font=(FONT_FAMILY, 10),
                  width=34, bd=1, relief="solid").pack(side="left")
-        tk.Button(creds_row, text="Browse…", font=("Segoe UI", 9),
+        tk.Button(creds_row, text="Browse…", font=(FONT_FAMILY, 9),
                   bg="#e2e8f2", relief="flat", padx=6, pady=3,
                   command=self._browse_creds).pack(side="left", padx=(6, 0))
 
-        tk.Button(self, text="Save", font=("Segoe UI", 10, "bold"),
+        tk.Button(self, text="Save", font=(FONT_FAMILY, 10, "bold"),
                   bg=ACCENT, fg="white", relief="flat", padx=20, pady=6,
                   cursor="hand2", command=self._save).pack(pady=(16, 0))
 
