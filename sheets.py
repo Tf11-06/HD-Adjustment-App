@@ -1,6 +1,14 @@
 import os
+import sys
 import gspread
 from pdf_parser import COLUMNS
+
+
+def _get_app_dir() -> str:
+    """Return the directory containing the running app (exe dir when frozen, script dir otherwise)."""
+    if getattr(sys, 'frozen', False):
+        return os.path.dirname(sys.executable)
+    return os.path.dirname(os.path.abspath(__file__))
 
 SCOPES = [
     "https://www.googleapis.com/auth/spreadsheets",
@@ -11,7 +19,7 @@ def connect_sheet(config: dict) -> gspread.Worksheet:
     """Connect to the Google Sheet worksheet. Raises on bad credentials or sheet ID."""
     creds_path = config["credentials_file"]
     if not os.path.isabs(creds_path):
-        creds_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), creds_path)
+        creds_path = os.path.join(_get_app_dir(), creds_path)
 
     if not os.path.exists(creds_path):
         raise FileNotFoundError(

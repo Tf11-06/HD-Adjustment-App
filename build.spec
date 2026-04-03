@@ -1,20 +1,23 @@
 # -*- mode: python ; coding: utf-8 -*-
 import os
 import customtkinter
-
-block_cipher = None
+import tkinterdnd2
 
 # Include customtkinter assets
 ctk_path = os.path.dirname(customtkinter.__file__)
+
+# Include tkinterdnd2 package (contains platform-specific tkdnd DLL)
+tkdnd_path = os.path.dirname(tkinterdnd2.__file__)
 
 a = Analysis(
     ['app.py'],
     pathex=[],
     binaries=[],
     datas=[
-        ('config.json', '.'),
-        ('service_account.json', '.'),
         (ctk_path, 'customtkinter'),
+        (tkdnd_path, 'tkinterdnd2'),
+        # config.json and service_account.json are NOT bundled.
+        # They live next to HDProcessor.exe and are set up by the client.
     ],
     hiddenimports=[
         'tkinterdnd2',
@@ -26,13 +29,10 @@ a = Analysis(
     hookspath=[],
     runtime_hooks=[],
     excludes=[],
-    win_no_prefer_redirects=False,
-    win_private_assemblies=False,
-    cipher=block_cipher,
     noarchive=False,
 )
 
-pyz = PYZ(a.pure, a.zipped_data, cipher=block_cipher)
+pyz = PYZ(a.pure)
 
 exe = EXE(
     pyz,

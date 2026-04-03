@@ -36,6 +36,7 @@ class HDProcessorApp(TkinterDnD.Tk):
         self.configure(bg=BG)
         self._modal_result = None
         self._modal_event = threading.Event()
+        self._processing = False
         self._build_ui()
         self.drop_target_register(DND_FILES)
         self.dnd_bind("<<Drop>>", self._on_drop)
@@ -108,6 +109,8 @@ class HDProcessorApp(TkinterDnD.Tk):
         )
 
     def _on_click_browse(self, event=None):
+        if self._processing:
+            return
         paths = filedialog.askopenfilenames(
             title="Select PDF(s)",
             filetypes=[("PDF files", "*.pdf"), ("All files", "*.*")]
@@ -116,6 +119,8 @@ class HDProcessorApp(TkinterDnD.Tk):
             self._process_files(list(paths))
 
     def _on_drop(self, event):
+        if self._processing:
+            return
         raw = event.data.strip()
         paths = self.tk.splitlist(raw)
         pdf_paths = [p for p in paths if p.lower().endswith(".pdf")]
@@ -126,6 +131,7 @@ class HDProcessorApp(TkinterDnD.Tk):
         SettingsWindow(self)
 
     def _process_files(self, paths: list[str]):
+        self._processing = True
         thread = threading.Thread(target=self._run_batch, args=(paths,), daemon=True)
         thread.start()
 
@@ -183,6 +189,7 @@ class HDProcessorApp(TkinterDnD.Tk):
         if not cfg.get("sheet_id"):
             msg, clr = "Sheet ID not configured. Open Settings to add it.", ERROR_CLR
             self.after(0, lambda msg=msg, clr=clr: self.set_status(msg, clr))
+            self.after(0, lambda: setattr(self, '_processing', False))
             return
 
         try:
@@ -190,10 +197,19 @@ class HDProcessorApp(TkinterDnD.Tk):
         except (FileNotFoundError, ValueError, ConnectionError) as e:
             err = str(e)
             self.after(0, lambda err=err: self.set_status(err, ERROR_CLR))
+            self.after(0, lambda: setattr(self, '_processing', False))
             return
 
-        all_rows = sheets.get_all_rows(worksheet)
-        sheets.ensure_header(worksheet, all_rows=all_rows)
+        try:
+            all_rows = sheets.get_all_rows(worksheet)
+            sheets.ensure_header(worksheet, all_rows=all_rows)
+        except Exception:
+            self.after(0, lambda: self.set_status(
+                "Could not connect to Google Sheets. Check your internet connection and credentials.",
+                ERROR_CLR
+            ))
+            self.after(0, lambda: setattr(self, '_processing', False))
+            return
 
         for i, path in enumerate(paths, 1):
             filename = os.path.basename(path)
@@ -234,7 +250,10 @@ class HDProcessorApp(TkinterDnD.Tk):
                 total_rows += count
                 processed += 1
                 # Refresh the cache so duplicate detection stays current
-                all_rows = sheets.get_all_rows(worksheet)
+                try:
+                    all_rows = sheets.get_all_rows(worksheet)
+                except Exception:
+                    all_rows = []  # non-fatal; duplicate detection degrades gracefully
                 if invoice_num:
                     inv, cnt = invoice_num, count
                     self.after(0, lambda i=inv, c=cnt: self.set_last_processed(i, c))
@@ -244,6 +263,7 @@ class HDProcessorApp(TkinterDnD.Tk):
             except Exception:
                 msg = "Could not connect to Google Sheets. Check your internet connection and credentials."
                 self.after(0, lambda msg=msg: self.set_status(msg, ERROR_CLR))
+                self.after(0, lambda: setattr(self, '_processing', False))
                 return
 
         if not warn_no_items or total > 1:
@@ -260,6 +280,8 @@ class HDProcessorApp(TkinterDnD.Tk):
                 )
                 clr = SUCCESS if processed > 0 else TEXT_MUTED
                 self.after(0, lambda m=batch_msg, c=clr: self.set_status(m, c))
+
+        self.after(0, lambda: setattr(self, '_processing', False))
 
 
 class SettingsWindow(tk.Toplevel):
