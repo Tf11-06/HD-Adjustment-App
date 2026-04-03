@@ -1,7 +1,7 @@
 import pytest
 from unittest.mock import MagicMock, patch, call
 import sheets
-from parser import COLUMNS
+from pdf_parser import COLUMNS
 
 
 @pytest.fixture
@@ -40,7 +40,7 @@ def test_find_duplicate_returns_false_on_empty_sheet(mock_worksheet):
     assert sheets.find_duplicate(mock_worksheet, "7573") is False
 
 
-def test_append_rows_calls_append_for_each_row(mock_worksheet):
+def test_append_rows_calls_batch_append(mock_worksheet):
     rows = [
         {col: "" for col in COLUMNS},
         {col: "" for col in COLUMNS},
@@ -48,7 +48,9 @@ def test_append_rows_calls_append_for_each_row(mock_worksheet):
     rows[0]["Invoice #"] = "7573"
     rows[1]["Invoice #"] = "7573"
     count = sheets.append_rows(mock_worksheet, rows)
-    assert mock_worksheet.append_row.call_count == 2
+    assert mock_worksheet.append_rows.call_count == 1
+    called_values = mock_worksheet.append_rows.call_args[0][0]
+    assert len(called_values) == 2
     assert count == 2
 
 
@@ -56,13 +58,13 @@ def test_append_rows_values_in_column_order(mock_worksheet):
     row = {col: f"val_{i}" for i, col in enumerate(COLUMNS)}
     sheets.append_rows(mock_worksheet, [row])
     expected = [f"val_{i}" for i in range(len(COLUMNS))]
-    mock_worksheet.append_row.assert_called_once_with(expected)
+    mock_worksheet.append_rows.assert_called_once_with([expected], value_input_option='RAW')
 
 
 def test_append_rows_empty_list(mock_worksheet):
     count = sheets.append_rows(mock_worksheet, [])
     assert count == 0
-    mock_worksheet.append_row.assert_not_called()
+    mock_worksheet.append_rows.assert_not_called()
 
 
 def test_connect_sheet_raises_on_missing_credentials(tmp_path):

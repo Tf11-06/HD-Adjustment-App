@@ -1,12 +1,15 @@
 import os
+import threading
 import tkinter as tk
 from tkinter import filedialog, messagebox
 from datetime import datetime
 import customtkinter as ctk
 from tkinterdnd2 import TkinterDnD, DND_FILES
+import pdfplumber
 
 import config
-import parser
+import pdf_parser as parser
+import pdf_parser
 import sheets
 
 # ── Theme ──────────────────────────────────────────────────────────────────
@@ -31,6 +34,8 @@ class HDProcessorApp(TkinterDnD.Tk):
         self.geometry("500x400")
         self.resizable(False, False)
         self.configure(bg=BG)
+        self._modal_result = None
+        self._modal_event = threading.Event()
         self._build_ui()
         self.drop_target_register(DND_FILES)
         self.dnd_bind("<<Drop>>", self._on_drop)
@@ -97,7 +102,7 @@ class HDProcessorApp(TkinterDnD.Tk):
         self.update_idletasks()
 
     def set_last_processed(self, invoice: str, row_count: int):
-        ts = datetime.now().strftime("%#I:%M %p")
+        ts = datetime.now().strftime("%I:%M %p").lstrip("0")
         self.last_label.configure(
             text=f"Invoice #{invoice} · {row_count} row{'s' if row_count != 1 else ''} added · {ts}"
         )
@@ -121,6 +126,53 @@ class HDProcessorApp(TkinterDnD.Tk):
         SettingsWindow(self)
 
     def _process_files(self, paths: list[str]):
+        thread = threading.Thread(target=self._run_batch, args=(paths,), daemon=True)
+        thread.start()
+
+    def _ask_add_anyway(self, invoice_num: str) -> bool:
+        """Run on the main thread: show duplicate dialog, return True=add, False=skip."""
+        self._modal_event.clear()
+        self._modal_result = None
+        self.after(0, lambda: self._show_duplicate_modal(invoice_num))
+        self._modal_event.wait()  # worker thread waits here
+        return self._modal_result
+
+    def _show_duplicate_modal(self, invoice_num: str):
+        """Called on main thread. Show custom dialog, set result, signal event."""
+        win = tk.Toplevel(self)
+        win.title("Duplicate Invoice")
+        win.geometry("400x130")
+        win.resizable(False, False)
+        win.configure(bg=BG)
+        win.grab_set()
+        win.transient(self)
+
+        msg = tk.Label(
+            win,
+            text=f"Invoice #{invoice_num} already exists in the sheet.\nAdd anyway or skip?",
+            font=("Segoe UI", 11), bg=BG, fg=TEXT_MAIN, justify="center", wraplength=360
+        )
+        msg.pack(pady=(20, 12))
+
+        btn_row = tk.Frame(win, bg=BG)
+        btn_row.pack()
+
+        def on_add():
+            self._modal_result = True
+            win.destroy()
+            self._modal_event.set()
+
+        def on_skip():
+            self._modal_result = False
+            win.destroy()
+            self._modal_event.set()
+
+        tk.Button(btn_row, text="Add Anyway", font=("Segoe UI", 10), bg=ACCENT, fg="white",
+                  relief="flat", padx=14, pady=5, cursor="hand2", command=on_add).pack(side="left", padx=6)
+        tk.Button(btn_row, text="Skip", font=("Segoe UI", 10), bg="#e2e8f2", fg=TEXT_MAIN,
+                  relief="flat", padx=14, pady=5, cursor="hand2", command=on_skip).pack(side="left", padx=6)
+
+    def _run_batch(self, paths: list[str]):
         total = len(paths)
         processed = 0
         skipped = 0
@@ -129,44 +181,51 @@ class HDProcessorApp(TkinterDnD.Tk):
         cfg = config.load_config()
 
         if not cfg.get("sheet_id"):
-            self.set_status("Sheet ID not configured. Open Settings to add it.", ERROR_CLR)
+            msg, clr = "Sheet ID not configured. Open Settings to add it.", ERROR_CLR
+            self.after(0, lambda msg=msg, clr=clr: self.set_status(msg, clr))
             return
 
         try:
             worksheet = sheets.connect_sheet(cfg)
-            sheets.ensure_header(worksheet)
         except (FileNotFoundError, ValueError, ConnectionError) as e:
-            self.set_status(str(e), ERROR_CLR)
+            err = str(e)
+            self.after(0, lambda err=err: self.set_status(err, ERROR_CLR))
             return
+
+        all_rows = sheets.get_all_rows(worksheet)
+        sheets.ensure_header(worksheet, all_rows=all_rows)
 
         for i, path in enumerate(paths, 1):
             filename = os.path.basename(path)
-            self.set_status(f"Processing {i} of {total}: {filename}...", ACCENT)
+            msg = f"Processing {i} of {total}: {filename}..."
+            self.after(0, lambda msg=msg: self.set_status(msg, ACCENT))
 
             try:
                 rows = parser.parse_pdf(path)
             except Exception:
-                self.set_status(
-                    f"Could not read {filename}. Make sure it's a valid Home Depot adjustment document.",
-                    ERROR_CLR
-                )
+                msg = f"Could not read {filename}. Make sure it's a valid Home Depot adjustment document."
+                self.after(0, lambda msg=msg: self.set_status(msg, ERROR_CLR))
                 skipped += 1
                 continue
 
+            warn_no_items = False
             if not rows:
-                self.set_status(f"Warning: No data found in {filename}.", ERROR_CLR)
-                skipped += 1
-                continue
+                # Build a single blank-items row from header-only data
+                try:
+                    with pdfplumber.open(path) as pdf:
+                        full_text = "\n".join(page.extract_text() or "" for page in pdf.pages)
+                    header = pdf_parser._parse_header(full_text)
+                except Exception:
+                    header = {}
+                blank_row = {col: header.get(col, "") for col in pdf_parser.COLUMNS}
+                rows = [blank_row]
+                warn_no_items = True
 
             invoice_num = rows[0].get("Invoice #", "")
 
-            if invoice_num and sheets.find_duplicate(worksheet, invoice_num):
-                answer = messagebox.askyesno(
-                    "Duplicate Invoice",
-                    f"Invoice #{invoice_num} already exists in the sheet.\n\nAdd anyway?",
-                    icon="warning"
-                )
-                if not answer:
+            if invoice_num and sheets.find_duplicate(worksheet, invoice_num, all_rows=all_rows):
+                add_anyway = self._ask_add_anyway(invoice_num)
+                if not add_anyway:
                     skipped += 1
                     continue
 
@@ -174,29 +233,33 @@ class HDProcessorApp(TkinterDnD.Tk):
                 count = sheets.append_rows(worksheet, rows)
                 total_rows += count
                 processed += 1
+                # Refresh the cache so duplicate detection stays current
+                all_rows = sheets.get_all_rows(worksheet)
                 if invoice_num:
-                    self.set_last_processed(invoice_num, count)
+                    inv, cnt = invoice_num, count
+                    self.after(0, lambda i=inv, c=cnt: self.set_last_processed(i, c))
+                if warn_no_items:
+                    warn_msg = f"Warning: No line items detected in {filename}. Row added with blank item columns."
+                    self.after(0, lambda m=warn_msg: self.set_status(m, ERROR_CLR))
             except Exception:
-                self.set_status(
-                    "Could not connect to Google Sheets. Check your internet connection and credentials.",
-                    ERROR_CLR
-                )
+                msg = "Could not connect to Google Sheets. Check your internet connection and credentials."
+                self.after(0, lambda msg=msg: self.set_status(msg, ERROR_CLR))
                 return
 
-        if total == 1:
-            if processed == 1:
-                self.set_status(
-                    f"✓ Done — {total_rows} row{'s' if total_rows != 1 else ''} added to sheet.",
-                    SUCCESS
-                )
+        if not warn_no_items or total > 1:
+            if total == 1:
+                if processed == 1:
+                    msg = f"✓ Done — {total_rows} row{'s' if total_rows != 1 else ''} added to sheet."
+                    self.after(0, lambda msg=msg: self.set_status(msg, SUCCESS))
+                else:
+                    self.after(0, lambda: self.set_status("Skipped (duplicate or error).", TEXT_MUTED))
             else:
-                self.set_status("Skipped (duplicate or error).", TEXT_MUTED)
-        else:
-            self.set_status(
-                f"Batch complete — {processed} of {total} processed, {total_rows} rows added"
-                + (f", {skipped} skipped" if skipped else "") + ".",
-                SUCCESS if processed > 0 else TEXT_MUTED
-            )
+                batch_msg = (
+                    f"Batch complete — {processed} of {total} processed, {total_rows} rows added"
+                    + (f", {skipped} skipped" if skipped else "") + "."
+                )
+                clr = SUCCESS if processed > 0 else TEXT_MUTED
+                self.after(0, lambda m=batch_msg, c=clr: self.set_status(m, c))
 
 
 class SettingsWindow(tk.Toplevel):

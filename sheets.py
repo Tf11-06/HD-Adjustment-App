@@ -1,6 +1,6 @@
 import os
 import gspread
-from parser import COLUMNS
+from pdf_parser import COLUMNS
 
 SCOPES = [
     "https://www.googleapis.com/auth/spreadsheets",
@@ -42,18 +42,23 @@ def connect_sheet(config: dict) -> gspread.Worksheet:
     return worksheet
 
 
-def ensure_header(worksheet: gspread.Worksheet) -> None:
+def get_all_rows(worksheet: gspread.Worksheet) -> list:
+    """Fetch and return all rows from the worksheet."""
+    return worksheet.get_all_values()
+
+
+def ensure_header(worksheet: gspread.Worksheet, all_rows=None) -> None:
     """Write header row if the sheet is empty."""
-    existing = worksheet.get_all_values()
+    existing = all_rows if all_rows is not None else worksheet.get_all_values()
     if not existing:
         worksheet.append_row(COLUMNS)
 
 
-def find_duplicate(worksheet: gspread.Worksheet, invoice_number: str) -> bool:
+def find_duplicate(worksheet: gspread.Worksheet, invoice_number: str, all_rows=None) -> bool:
     """Return True if any row has this Invoice # (col index 2, 0-based)."""
-    all_rows = worksheet.get_all_values()
+    rows = all_rows if all_rows is not None else worksheet.get_all_values()
     invoice_col = COLUMNS.index("Invoice #")
-    for row in all_rows[1:]:  # skip header
+    for row in rows[1:]:  # skip header
         if len(row) > invoice_col and row[invoice_col] == invoice_number:
             return True
     return False
@@ -61,7 +66,8 @@ def find_duplicate(worksheet: gspread.Worksheet, invoice_number: str) -> bool:
 
 def append_rows(worksheet: gspread.Worksheet, rows: list[dict]) -> int:
     """Append rows to the worksheet in column order. Returns number of rows added."""
-    for row in rows:
-        values = [row.get(col, "") for col in COLUMNS]
-        worksheet.append_row(values)
+    if not rows:
+        return 0
+    all_values = [[row.get(col, "") for col in COLUMNS] for row in rows]
+    worksheet.append_rows(all_values, value_input_option='RAW')
     return len(rows)
