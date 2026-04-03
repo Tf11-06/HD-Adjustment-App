@@ -1,17 +1,25 @@
 import re
 import pdfplumber
 
-COLUMNS = [
+HEADER_COLS = [
     "Adjustment #", "Adjustment Date", "Invoice #", "Order #",
-    "Invoice Date", "PO Date", "Credit/Debit", "SKU", "Vendor PN",
-    "UPC/GTIN", "Adjustment Reason", "Sellers Invoice #", "Line C/D",
-    "QTY", "Unit", "Unit Price", "Item Total", "Store #", "Vendor #",
+    "Invoice Date", "PO Date", "Credit/Debit", "Store #", "Vendor #",
     "Dept #", "Total Amount", "Handling",
 ]
 
+ITEM_COLS = [
+    "SKU", "Vendor PN", "UPC/GTIN", "Sellers Inv #", "Line C/D",
+    "QTY", "Unit", "Unit Price", "Item Total",
+]
 
-def parse_pdf(pdf_path: str) -> list[dict]:
-    """Parse a Home Depot 812 PDF. Returns list of row dicts (one per line item)."""
+
+def parse_pdf(pdf_path: str) -> dict:
+    """Parse a Home Depot 812 PDF.
+
+    Returns:
+        {"header": dict, "items": list[dict]}
+        header keys match HEADER_COLS; item keys match ITEM_COLS.
+    """
     with pdfplumber.open(pdf_path) as pdf:
         full_text = "\n".join(page.extract_text() or "" for page in pdf.pages)
         raw_tables = []
@@ -25,14 +33,7 @@ def parse_pdf(pdf_path: str) -> list[dict]:
     if not line_items:
         line_items = _parse_line_items_from_text(full_text)
 
-    rows = []
-    for item in line_items:
-        row = {}
-        row.update(header)
-        row.update(item)
-        rows.append(row)
-
-    return rows
+    return {"header": header, "items": line_items}
 
 
 def _parse_header(text: str) -> dict:
@@ -49,18 +50,18 @@ def _parse_header(text: str) -> dict:
     vendor_m = re.search(r'VENDOR NUMBER:\s*(.+)', text, re.IGNORECASE)
 
     return {
-        "Adjustment #":   search(r'ADJUSTMENT NUMBER:\s*(\S+)'),
+        "Adjustment #":    search(r'ADJUSTMENT NUMBER:\s*(\S+)'),
         "Adjustment Date": search(r'ADJUSTMENT DATE:\s*([\d-]+)'),
-        "Invoice #":      inv_order.group(1).strip() if inv_order else "",
-        "Order #":        inv_order.group(2).strip() if inv_order else "",
-        "Invoice Date":   inv_po.group(1).strip() if inv_po else "",
-        "PO Date":        inv_po.group(2).strip() if inv_po else "",
-        "Credit/Debit":   search(r'CREDIT DEBIT:\s*(.+)'),
-        "Total Amount":   search(r'AMOUNT:\s*([\d.]+)'),
-        "Handling":       search(r'HANDLING:\s*(.+)'),
-        "Store #":        search(r'ST - StoreNumber:\s*(\d+)'),
-        "Vendor #":       vendor_m.group(1).strip() if vendor_m else "",
-        "Dept #":         search(r'DEPARTMENT NUMBER:\s*(\d+)'),
+        "Invoice #":       inv_order.group(1).strip() if inv_order else "",
+        "Order #":         inv_order.group(2).strip() if inv_order else "",
+        "Invoice Date":    inv_po.group(1).strip() if inv_po else "",
+        "PO Date":         inv_po.group(2).strip() if inv_po else "",
+        "Credit/Debit":    search(r'CREDIT DEBIT:\s*(.+)'),
+        "Store #":         search(r'ST - StoreNumber:\s*(\d+)'),
+        "Vendor #":        vendor_m.group(1).strip() if vendor_m else "",
+        "Dept #":          search(r'DEPARTMENT NUMBER:\s*(\d+)'),
+        "Total Amount":    search(r'AMOUNT:\s*([\d.]+)'),
+        "Handling":        search(r'HANDLING:\s*(.+)'),
     }
 
 
@@ -69,7 +70,6 @@ def _parse_line_items_from_tables(table_rows: list) -> list[dict]:
     if not table_rows:
         return []
 
-    # Find header row: contains "SKU" somewhere
     header_idx = None
     for i, row in enumerate(table_rows):
         if row and any(cell and "SKU" in str(cell).upper() for cell in row):
@@ -81,7 +81,6 @@ def _parse_line_items_from_tables(table_rows: list) -> list[dict]:
     header_row = table_rows[header_idx]
 
     def col(row, *keywords):
-        """Return cell value from first column whose header contains any keyword."""
         for kw in keywords:
             for i, h in enumerate(header_row):
                 if h and kw.upper() in str(h).upper():
@@ -104,16 +103,15 @@ def _parse_line_items_from_tables(table_rows: list) -> list[dict]:
         unit_price = _parse_ucp(price_raw)
 
         item = {
-            "SKU":               col(row, "SKU"),
-            "Vendor PN":         col(row, "VENDOR PN"),
-            "UPC/GTIN":          col(row, "UPC"),
-            "Adjustment Reason": col(row, "ADJUSTMENT REASON"),
-            "Sellers Invoice #": col(row, "SELLERS INVOICE"),
-            "Line C/D":          col(row, "CREDIT DEBIT"),
-            "QTY":               qty,
-            "Unit":              unit,
-            "Unit Price":        unit_price,
-            "Item Total":        col(row, "ITEM TOTAL"),
+            "SKU":           col(row, "SKU"),
+            "Vendor PN":     col(row, "VENDOR PN"),
+            "UPC/GTIN":      col(row, "UPC"),
+            "Sellers Inv #": col(row, "SELLERS INVOICE"),
+            "Line C/D":      col(row, "CREDIT DEBIT"),
+            "QTY":           qty,
+            "Unit":          unit,
+            "Unit Price":    unit_price,
+            "Item Total":    col(row, "ITEM TOTAL"),
         }
         items.append(item)
 
@@ -143,16 +141,15 @@ def _parse_line_items_from_text(text: str) -> list[dict]:
         tokens = re.findall(r'\b\d{4,7}\b', line)
 
         item = {
-            "SKU":               tokens[0] if tokens else "",
-            "Vendor PN":         tokens[1] if len(tokens) > 1 else "",
-            "UPC/GTIN":          "",
-            "Adjustment Reason": "",
-            "Sellers Invoice #": inv_match.group(1) if inv_match else "",
-            "Line C/D":          cd_match.group(1) if cd_match else "",
-            "QTY":               qty_match.group(1) if qty_match else "",
-            "Unit":              qty_match.group(2) if qty_match else "",
-            "Unit Price":        ucp_match.group(1) if ucp_match else "",
-            "Item Total":        total_match.group(1) if total_match else "",
+            "SKU":           tokens[0] if tokens else "",
+            "Vendor PN":     tokens[1] if len(tokens) > 1 else "",
+            "UPC/GTIN":      "",
+            "Sellers Inv #": inv_match.group(1) if inv_match else "",
+            "Line C/D":      cd_match.group(1) if cd_match else "",
+            "QTY":           qty_match.group(1) if qty_match else "",
+            "Unit":          qty_match.group(2) if qty_match else "",
+            "Unit Price":    ucp_match.group(1) if ucp_match else "",
+            "Item Total":    total_match.group(1) if total_match else "",
         }
         items.append(item)
 
@@ -160,7 +157,6 @@ def _parse_line_items_from_text(text: str) -> list[dict]:
 
 
 def _parse_qty_unit(raw: str) -> tuple[str, str]:
-    """Extract numeric qty and unit from 'CREDIT DEBIT QTY: 12 EA' -> ('12', 'EA')."""
     if not raw:
         return "", ""
     m = re.search(r'QTY:\s*(\d+)\s+(\w+)', raw, re.IGNORECASE)
@@ -173,7 +169,6 @@ def _parse_qty_unit(raw: str) -> tuple[str, str]:
 
 
 def _parse_ucp(raw: str) -> str:
-    """Extract UCP value from 'UCP: 3.34 / INV: 3.3399' -> '3.34'."""
     if not raw:
         return ""
     m = re.search(r'UCP:\s*([\d.]+)', raw, re.IGNORECASE)

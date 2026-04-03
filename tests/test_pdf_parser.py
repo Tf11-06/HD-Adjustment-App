@@ -152,7 +152,7 @@ def test_parse_line_items_from_tables_item_total():
 
 def test_parse_line_items_from_tables_sellers_invoice():
     items = parser._parse_line_items_from_tables(SAMPLE_TABLE_ROWS)
-    assert items[1]["Sellers Invoice #"] == "7573"
+    assert items[1]["Sellers Inv #"] == "7573"
 
 
 def test_parse_line_items_from_tables_empty_input():
@@ -180,7 +180,7 @@ from unittest.mock import MagicMock, patch
 
 
 def test_parse_pdf_merges_header_into_rows():
-    """parse_pdf() must copy header fields onto every line-item dict."""
+    """parse_pdf() returns {"header": dict, "items": list[dict]}."""
     mock_page = MagicMock()
     mock_page.extract_text.return_value = SAMPLE_TEXT
     mock_page.extract_table.return_value = SAMPLE_TABLE_ROWS
@@ -191,13 +191,17 @@ def test_parse_pdf_merges_header_into_rows():
     mock_pdf.__exit__ = MagicMock(return_value=False)
 
     with patch("pdf_parser.pdfplumber.open", return_value=mock_pdf):
-        rows = parser.parse_pdf("fake.pdf")
+        result = parser.parse_pdf("fake.pdf")
 
-    assert len(rows) == 3
-    for row in rows:
-        assert row["Invoice #"] == "7573"           # header field
-        assert row["Adjustment Date"] == "2026-02-24"  # header field
-        assert "Item Total" in row                  # line-item field
-        assert "SKU" in row                         # line-item field
-    assert rows[1]["SKU"] == "175525"
-    assert rows[2]["SKU"] == "588978"
+    assert isinstance(result, dict)
+    assert "header" in result
+    assert "items" in result
+    assert result["header"]["Invoice #"] == "7573"
+    assert result["header"]["Adjustment Date"] == "2026-02-24"
+    assert len(result["items"]) == 3
+    assert result["items"][1]["SKU"] == "175525"
+    assert result["items"][2]["SKU"] == "588978"
+    for item in result["items"]:
+        assert "Item Total" in item
+        assert "SKU" in item
+        assert "Invoice #" not in item   # header fields NOT duplicated into items
