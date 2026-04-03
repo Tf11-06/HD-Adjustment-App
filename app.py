@@ -5,8 +5,6 @@ from tkinter import filedialog, messagebox
 from datetime import datetime
 import platform
 
-FONT_FAMILY = "Helvetica Neue" if platform.system() == "Darwin" else "Segoe UI"
-
 import customtkinter as ctk
 from tkinterdnd2 import TkinterDnD, DND_FILES
 import pdfplumber
@@ -16,9 +14,11 @@ import pdf_parser as parser
 import pdf_parser
 import sheets
 
-# ── Theme ──────────────────────────────────────────────────────────────────
 ctk.set_appearance_mode("light")
 ctk.set_default_color_theme("blue")
+
+# ── Theme ──────────────────────────────────────────────────────────────────
+FONT_FAMILY = "Helvetica" if platform.system() == "Darwin" else "Segoe UI"
 
 BG         = "#f1f4f9"
 CARD_BG    = "#ffffff"
