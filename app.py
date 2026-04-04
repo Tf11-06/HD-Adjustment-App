@@ -216,8 +216,8 @@ class HDProcessorApp(TkinterDnD.Tk):
             self.after(0, lambda: setattr(self, '_processing', False))
             return
 
-        warn_no_items = False
         for i, path in enumerate(paths, 1):
+            warn_no_items = False
             filename = os.path.basename(path)
             msg = f"Processing {i} of {total}: {filename}..."
             self.after(0, lambda msg=msg: self.set_status(msg, ACCENT))
@@ -261,13 +261,13 @@ class HDProcessorApp(TkinterDnD.Tk):
 
         if total == 1:
             if processed == 1:
-                msg = f"✓ Done — {total_rows} row{'s' if total_rows != 1 else ''} added to sheet."
+                msg = f"✓ Done — {total_rows} invoice{'s' if total_rows != 1 else ''} added to sheet."
                 self.after(0, lambda msg=msg: self.set_status(msg, SUCCESS))
             else:
                 self.after(0, lambda: self.set_status("Skipped (duplicate or error).", TEXT_MUTED))
         else:
             batch_msg = (
-                f"Batch complete — {processed} of {total} processed, {total_rows} rows added"
+                f"Batch complete — {processed} of {total} processed, {total_rows} invoices added"
                 + (f", {skipped} skipped" if skipped else "") + "."
             )
             clr = SUCCESS if processed > 0 else TEXT_MUTED
