@@ -86,11 +86,24 @@ SAMPLE_TABLE_ROWS = [
     ["LINE", "SKU", "VENDOR PN", "UPC GTIN", "ADJUSTMENT REASON",
      "DESCRIPTION", "SELLERS INVOICE #", "CREDIT DEBIT", "QTY",
      "UNIT PRICE RETAIL PRICE", "UNIT PRICE DIFFERENCE", "ITEM TOTAL"],
-    [None, None, None, "24", None, None, "7573", "C - Credit", None, None, None, "38.99"],
+    # First row: credit-only — "24" is ADJUSTMENT REASON (index 4), not UPC (index 3)
+    [None, None, None, None, "24", None, "7573", "C - Credit", None, None, None, "38.99"],
     [None, "175525", "900690", "06", None, None, "7573", "D - Debit",
      "CREDIT DEBIT QTY: 12 EA", "UCP: 3.34 / INV: 3.3399", None, "40.08"],
     [None, "588978", "900701", "06", None, None, "7573", "D - Debit",
      "CREDIT DEBIT QTY: 48 EA", "UCP: 4.98 / INV: 4.9801", None, "239.04"],
+]
+
+# Real-world PDF table rows: narrow columns cause numbers and text to wrap across lines
+REAL_PDF_TABLE_ROWS = [
+    ["LINE\nE", "SKU", "VENDOR\nPN", "UPC\nGTIN", "ADJUSTMENT\nREASON",
+     "DESCRIPTION\nITEM\nCOMMENTS", "SELLERS INVOICE\n#", "CREDIT\nDEBIT", "QTY",
+     "UNIT PRICE\nRETAIL PRICE", "UNIT PRICE\nDIFFERENCE", "ITEM\nTOTAL"],
+    [None, None, None, None, "24", None, "7573", "C -\nCredit", None, None, None, "38.99"],
+    [None, "17552\n5", "90069\n0", "06", None, None, "7573", "D -\nDebit",
+     "CREDIT DEBIT QTY:  12  EA -\nEach", "UCP - Unit Cost Price: 3.\n34\nINV: 3.3399", None, "40.08"],
+    [None, "58897\n8", "90070\n1", "06", None, None, "7573", "D -\nDebit",
+     "CREDIT DEBIT QTY:  48  EA -\nEach", "UCP - Unit Cost Price: 4.\n98\nINV: 4.9801", None, "239.04"],
 ]
 
 SAMPLE_TEXT_WITH_ITEMS = SAMPLE_TEXT + """
@@ -120,7 +133,7 @@ def test_parse_line_items_from_tables_vendor_pn():
 
 def test_parse_line_items_from_tables_upc():
     items = parser._parse_line_items_from_tables(SAMPLE_TABLE_ROWS)
-    assert items[0]["UPC/GTIN"] == "24"
+    assert items[0]["UPC/GTIN"] == ""   # credit-only row — no UPC
     assert items[1]["UPC/GTIN"] == "06"
 
 
@@ -174,6 +187,51 @@ def test_parse_line_items_from_text_fallback_sku():
     items = parser._parse_line_items_from_text(SAMPLE_TEXT_WITH_ITEMS)
     assert items[0]["SKU"] == "175525"
     assert items[1]["SKU"] == "588978"
+
+
+REAL_VENDOR_TEXT = """
+VENDOR NUMBER:
+000873237
+580025
+DEPARTMENT NUMBER: 28
+"""
+
+
+def test_parse_header_vendor_number_two_line():
+    """Real PDFs put vendor # on two separate lines."""
+    h = parser._parse_header(REAL_VENDOR_TEXT)
+    assert h["Vendor #"] == "000873237 / 580025"
+
+
+def test_real_pdf_table_sku_rejoins_split_number():
+    items = parser._parse_line_items_from_tables(REAL_PDF_TABLE_ROWS)
+    assert items[1]["SKU"] == "175525"
+    assert items[2]["SKU"] == "588978"
+
+
+def test_real_pdf_table_vendor_pn_rejoins_split_number():
+    items = parser._parse_line_items_from_tables(REAL_PDF_TABLE_ROWS)
+    assert items[1]["Vendor PN"] == "900690"
+    assert items[2]["Vendor PN"] == "900701"
+
+
+def test_real_pdf_table_line_cd_normalized():
+    items = parser._parse_line_items_from_tables(REAL_PDF_TABLE_ROWS)
+    assert items[0]["Line C/D"] == "C - Credit"
+    assert items[1]["Line C/D"] == "D - Debit"
+
+
+def test_real_pdf_table_ucp_extracted_from_full_label():
+    items = parser._parse_line_items_from_tables(REAL_PDF_TABLE_ROWS)
+    assert items[1]["Unit Price"] == "3.34"
+    assert items[2]["Unit Price"] == "4.98"
+
+
+def test_real_pdf_table_credit_row_has_blank_sku_and_upc():
+    items = parser._parse_line_items_from_tables(REAL_PDF_TABLE_ROWS)
+    assert items[0]["SKU"] == ""
+    assert items[0]["UPC/GTIN"] == ""
+    assert items[0]["Item Total"] == "38.99"
 
 
 from unittest.mock import MagicMock, patch

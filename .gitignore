@@ -9,3 +9,5 @@ build/
 *.log
 service_account.json
 config.json
+.DS_Store
+docs/superpowers/

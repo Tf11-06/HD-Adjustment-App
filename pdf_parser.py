@@ -2,9 +2,9 @@ import re
 import pdfplumber
 
 HEADER_COLS = [
-    "Adjustment #", "Adjustment Date", "Invoice #", "Order #",
-    "Invoice Date", "PO Date", "Credit/Debit", "Store #", "Vendor #",
-    "Dept #", "Total Amount", "Handling",
+    "Invoice #", "Order #", "Adjustment #", "Adjustment Date",
+    "Invoice Date", "PO Date", "Credit/Debit", "Total Amount",
+    "Handling", "Store #", "Vendor #", "Dept #",
 ]
 
 ITEM_COLS = [
@@ -36,6 +36,18 @@ def parse_pdf(pdf_path: str) -> dict:
     return {"header": header, "items": line_items}
 
 
+def _clean_cell(cell) -> str:
+    """Normalize a pdfplumber cell value: collapse embedded newlines to spaces."""
+    if cell is None:
+        return ""
+    return re.sub(r'\s*\n\s*', ' ', str(cell)).strip()
+
+
+def _clean_numeric(cell) -> str:
+    """Normalize a purely numeric cell (SKU, Vendor PN, UPC): strip all whitespace."""
+    return re.sub(r'\s+', '', _clean_cell(cell))
+
+
 def _parse_header(text: str) -> dict:
     def search(pattern, default=""):
         m = re.search(pattern, text, re.IGNORECASE)
@@ -47,21 +59,30 @@ def _parse_header(text: str) -> dict:
     inv_po = re.search(
         r'INVOICE DATE / PO DATE:\s*([\d-]+)\s*/\s*([\d-]+)', text, re.IGNORECASE
     )
-    vendor_m = re.search(r'VENDOR NUMBER:\s*(.+)', text, re.IGNORECASE)
+
+    # Vendor # may appear on two separate lines: "000873237\n580025"
+    vendor_two = re.search(
+        r'VENDOR NUMBER:\s*\n\s*(\d+)\s*\n\s*(\d+)', text, re.IGNORECASE
+    )
+    if vendor_two:
+        vendor_num = f"{vendor_two.group(1)} / {vendor_two.group(2)}"
+    else:
+        vendor_one = re.search(r'VENDOR NUMBER:\s*(.+)', text, re.IGNORECASE)
+        vendor_num = vendor_one.group(1).strip() if vendor_one else ""
 
     return {
-        "Adjustment #":    search(r'ADJUSTMENT NUMBER:\s*(\S+)'),
-        "Adjustment Date": search(r'ADJUSTMENT DATE:\s*([\d-]+)'),
         "Invoice #":       inv_order.group(1).strip() if inv_order else "",
         "Order #":         inv_order.group(2).strip() if inv_order else "",
+        "Adjustment #":    search(r'ADJUSTMENT NUMBER:\s*(\S+)'),
+        "Adjustment Date": search(r'ADJUSTMENT DATE:\s*([\d-]+)'),
         "Invoice Date":    inv_po.group(1).strip() if inv_po else "",
         "PO Date":         inv_po.group(2).strip() if inv_po else "",
         "Credit/Debit":    search(r'CREDIT DEBIT:\s*(.+)'),
-        "Store #":         search(r'ST - StoreNumber:\s*(\d+)'),
-        "Vendor #":        vendor_m.group(1).strip() if vendor_m else "",
-        "Dept #":          search(r'DEPARTMENT NUMBER:\s*(\d+)'),
         "Total Amount":    search(r'AMOUNT:\s*([\d.]+)'),
         "Handling":        search(r'HANDLING:\s*(.+)'),
+        "Store #":         search(r'ST - StoreNumber:\s*(\d+)'),
+        "Vendor #":        vendor_num,
+        "Dept #":          search(r'DEPARTMENT NUMBER:\s*(\d+)'),
     }
 
 
@@ -81,11 +102,12 @@ def _parse_line_items_from_tables(table_rows: list) -> list[dict]:
     header_row = table_rows[header_idx]
 
     def col(row, *keywords):
+        """Return cleaned cell value for the first column whose header contains any keyword."""
         for kw in keywords:
             for i, h in enumerate(header_row):
-                if h and kw.upper() in str(h).upper():
+                if h and kw.upper() in _clean_cell(h).upper():
                     if i < len(row):
-                        return str(row[i]).strip() if row[i] is not None else ""
+                        return _clean_cell(row[i])
         return ""
 
     items = []
@@ -102,12 +124,16 @@ def _parse_line_items_from_tables(table_rows: list) -> list[dict]:
         price_raw = col(row, "UNIT PRICE")
         unit_price = _parse_ucp(price_raw)
 
+        # Normalize Line C/D: "D -Debit" → "D - Debit" (space around dash)
+        line_cd = col(row, "CREDIT DEBIT")
+        line_cd = re.sub(r'([CD])\s*-\s*', r'\1 - ', line_cd)
+
         item = {
-            "SKU":           col(row, "SKU"),
-            "Vendor PN":     col(row, "VENDOR PN"),
-            "UPC/GTIN":      col(row, "UPC"),
+            "SKU":           _clean_numeric(col(row, "SKU")),
+            "Vendor PN":     _clean_numeric(col(row, "VENDOR PN")),
+            "UPC/GTIN":      _clean_numeric(col(row, "UPC")),
             "Sellers Inv #": col(row, "SELLERS INVOICE"),
-            "Line C/D":      col(row, "CREDIT DEBIT"),
+            "Line C/D":      line_cd,
             "QTY":           qty,
             "Unit":          unit,
             "Unit Price":    unit_price,
@@ -171,8 +197,12 @@ def _parse_qty_unit(raw: str) -> tuple[str, str]:
 def _parse_ucp(raw: str) -> str:
     if not raw:
         return ""
+    # Real PDF format: "UCP - Unit Cost Price: 3. 34" (decimal may be split by newline→space)
+    m = re.search(r'UCP\s*[-–]\s*Unit Cost Price:\s*(\d+\.?\s*\d*)', raw, re.IGNORECASE)
+    if m:
+        return re.sub(r'\s+', '', m.group(1))
+    # Legacy/test format: "UCP: 3.34"
     m = re.search(r'UCP:\s*([\d.]+)', raw, re.IGNORECASE)
     if m:
         return m.group(1)
-    m = re.search(r'([\d.]+)', raw)
-    return m.group(1) if m else ""
+    return ""
