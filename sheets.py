@@ -1,4 +1,5 @@
 import os
+import re
 import sys
 import gspread
 from pdf_parser import HEADER_COLS, ITEM_COLS
@@ -35,7 +36,7 @@ def _get_max_items(all_rows: list) -> int:
     """Count how many LINE ITEM column groups exist in the header label row."""
     if not all_rows:
         return 0
-    return sum(1 for cell in all_rows[0] if str(cell).startswith("LINE ITEM"))
+    return sum(1 for cell in all_rows[0] if re.match(r'^LINE ITEM \d+$', str(cell)))
 
 
 def connect_sheet(config: dict) -> gspread.Worksheet:

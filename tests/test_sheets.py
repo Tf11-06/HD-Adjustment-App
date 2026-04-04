@@ -101,6 +101,16 @@ def test_ensure_capacity_returns_updated_cache(mock_worksheet):
     assert result[2] == data_row
 
 
+def test_ensure_capacity_with_partial_header_discards_orphan(mock_worksheet):
+    # If sheet has only 1 row (corrupted/partial state), ensure_capacity
+    # returns a clean header without the orphaned row — documented behavior.
+    orphaned = sheets._build_header_rows(0)[:1]  # only row1, no row2
+    assert len(orphaned) == 1
+    result = sheets.ensure_capacity(mock_worksheet, 2, orphaned)
+    assert sheets._get_max_items(result) == 2
+    assert len(result) == 2  # just the 2 header rows, orphan discarded
+
+
 # ── find_duplicate ─────────────────────────────────────────────────────────
 
 def test_find_duplicate_returns_true_when_invoice_exists(mock_worksheet):
@@ -187,8 +197,14 @@ def test_append_invoice_expands_header_when_needed(mock_worksheet):
         "header": {col: "" for col in HEADER_COLS},
         "items": [{col: "" for col in ITEM_COLS} for _ in range(3)],
     }
-    sheets.append_invoice(mock_worksheet, invoice_data, all_rows)
+    result = sheets.append_invoice(mock_worksheet, invoice_data, all_rows)
+    # Header must have been written to the sheet
     mock_worksheet.update.assert_called_once()
+    # Returned cache must reflect the expanded header (3 item groups, not 1)
+    assert sheets._get_max_items(result) == 3
+    # Data row must be padded to match the expanded header width
+    data_row = result[-1]
+    assert len(data_row) == len(HEADER_COLS) + 3 * len(ITEM_COLS)
 
 
 def test_append_invoice_returns_updated_all_rows(mock_worksheet):
