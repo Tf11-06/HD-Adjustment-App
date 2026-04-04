@@ -7,11 +7,9 @@ import platform
 
 import customtkinter as ctk
 from tkinterdnd2 import TkinterDnD, DND_FILES
-import pdfplumber
 
 import config
 import pdf_parser as parser
-import pdf_parser
 import sheets
 
 ctk.set_appearance_mode("light")
@@ -106,10 +104,11 @@ class HDProcessorApp(TkinterDnD.Tk):
         self.status_label.configure(text=message, fg=color)
         self.update_idletasks()
 
-    def set_last_processed(self, invoice: str, row_count: int):
+    def set_last_processed(self, invoice: str, item_count: int):
         ts = datetime.now().strftime("%I:%M %p").lstrip("0")
+        label = f"{item_count} item{'s' if item_count != 1 else ''}"
         self.last_label.configure(
-            text=f"Invoice #{invoice} · {row_count} row{'s' if row_count != 1 else ''} added · {ts}"
+            text=f"Invoice #{invoice} · {label} · {ts}"
         )
 
     def _on_click_browse(self, event=None):
@@ -207,6 +206,8 @@ class HDProcessorApp(TkinterDnD.Tk):
         try:
             all_rows = sheets.get_all_rows(worksheet)
             sheets.ensure_header(worksheet, all_rows=all_rows)
+            if not all_rows:
+                all_rows = sheets._build_header_rows(0)
         except Exception:
             self.after(0, lambda: self.set_status(
                 "Could not connect to Google Sheets. Check your internet connection and credentials.",
@@ -215,33 +216,24 @@ class HDProcessorApp(TkinterDnD.Tk):
             self.after(0, lambda: setattr(self, '_processing', False))
             return
 
+        warn_no_items = False
         for i, path in enumerate(paths, 1):
             filename = os.path.basename(path)
             msg = f"Processing {i} of {total}: {filename}..."
             self.after(0, lambda msg=msg: self.set_status(msg, ACCENT))
 
             try:
-                rows = parser.parse_pdf(path)
+                invoice_data = parser.parse_pdf(path)
             except Exception:
                 msg = f"Could not read {filename}. Make sure it's a valid Home Depot adjustment document."
                 self.after(0, lambda msg=msg: self.set_status(msg, ERROR_CLR))
                 skipped += 1
                 continue
 
-            warn_no_items = False
-            if not rows:
-                # Build a single blank-items row from header-only data
-                try:
-                    with pdfplumber.open(path) as pdf:
-                        full_text = "\n".join(page.extract_text() or "" for page in pdf.pages)
-                    header = pdf_parser._parse_header(full_text)
-                except Exception:
-                    header = {}
-                blank_row = {col: header.get(col, "") for col in pdf_parser.COLUMNS}
-                rows = [blank_row]
+            if not invoice_data["items"]:
                 warn_no_items = True
 
-            invoice_num = rows[0].get("Invoice #", "")
+            invoice_num = invoice_data["header"].get("Invoice #", "")
 
             if invoice_num and sheets.find_duplicate(worksheet, invoice_num, all_rows=all_rows):
                 add_anyway = self._ask_add_anyway(invoice_num)
@@ -250,40 +242,36 @@ class HDProcessorApp(TkinterDnD.Tk):
                     continue
 
             try:
-                count = sheets.append_rows(worksheet, rows)
-                total_rows += count
+                all_rows = sheets.append_invoice(worksheet, invoice_data, all_rows)
                 processed += 1
-                # Refresh the cache so duplicate detection stays current
-                try:
-                    all_rows = sheets.get_all_rows(worksheet)
-                except Exception:
-                    all_rows = []  # non-fatal; duplicate detection degrades gracefully
+                total_rows += 1
+                item_count = len(invoice_data["items"])
                 if invoice_num:
-                    inv, cnt = invoice_num, count
+                    inv, cnt = invoice_num, item_count
                     self.after(0, lambda i=inv, c=cnt: self.set_last_processed(i, c))
                 if warn_no_items:
                     warn_msg = f"Warning: No line items detected in {filename}. Row added with blank item columns."
                     self.after(0, lambda m=warn_msg: self.set_status(m, ERROR_CLR))
+                    warn_no_items = False
             except Exception:
                 msg = "Could not connect to Google Sheets. Check your internet connection and credentials."
                 self.after(0, lambda msg=msg: self.set_status(msg, ERROR_CLR))
                 self.after(0, lambda: setattr(self, '_processing', False))
                 return
 
-        if not warn_no_items or total > 1:
-            if total == 1:
-                if processed == 1:
-                    msg = f"✓ Done — {total_rows} row{'s' if total_rows != 1 else ''} added to sheet."
-                    self.after(0, lambda msg=msg: self.set_status(msg, SUCCESS))
-                else:
-                    self.after(0, lambda: self.set_status("Skipped (duplicate or error).", TEXT_MUTED))
+        if total == 1:
+            if processed == 1:
+                msg = f"✓ Done — {total_rows} row{'s' if total_rows != 1 else ''} added to sheet."
+                self.after(0, lambda msg=msg: self.set_status(msg, SUCCESS))
             else:
-                batch_msg = (
-                    f"Batch complete — {processed} of {total} processed, {total_rows} rows added"
-                    + (f", {skipped} skipped" if skipped else "") + "."
-                )
-                clr = SUCCESS if processed > 0 else TEXT_MUTED
-                self.after(0, lambda m=batch_msg, c=clr: self.set_status(m, c))
+                self.after(0, lambda: self.set_status("Skipped (duplicate or error).", TEXT_MUTED))
+        else:
+            batch_msg = (
+                f"Batch complete — {processed} of {total} processed, {total_rows} rows added"
+                + (f", {skipped} skipped" if skipped else "") + "."
+            )
+            clr = SUCCESS if processed > 0 else TEXT_MUTED
+            self.after(0, lambda m=batch_msg, c=clr: self.set_status(m, c))
 
         self.after(0, lambda: setattr(self, '_processing', False))
 
