@@ -79,11 +79,14 @@ def get_all_rows(worksheet: gspread.Worksheet) -> list:
     return worksheet.get_all_values()
 
 
-def ensure_header(worksheet: gspread.Worksheet, all_rows=None) -> None:
-    """Write the 2-row header if the sheet is empty."""
+def ensure_header(worksheet: gspread.Worksheet, all_rows=None) -> list:
+    """Write the 2-row header if the sheet is empty. Returns effective all_rows."""
     existing = all_rows if all_rows is not None else worksheet.get_all_values()
     if not existing:
-        worksheet.update(_build_header_rows(0), "A1")
+        seed = _build_header_rows(0)
+        worksheet.update(seed, "A1")
+        return seed
+    return existing
 
 
 def ensure_capacity(worksheet: gspread.Worksheet, num_items: int, all_rows: list) -> list:
@@ -116,10 +119,10 @@ def append_invoice(worksheet: gspread.Worksheet, invoice_data: dict, all_rows: l
 
     Args:
         invoice_data: {"header": dict, "items": list[dict]}
-        all_rows: current cached sheet rows.
+        all_rows: current cached sheet rows. Mutated in-place AND returned.
 
     Returns:
-        Updated all_rows with the new invoice row appended.
+        The same all_rows list with the new invoice row appended (mutated in-place).
     """
     header = invoice_data.get("header", {})
     items = invoice_data.get("items", [])

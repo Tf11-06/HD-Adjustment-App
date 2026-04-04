@@ -205,9 +205,7 @@ class HDProcessorApp(TkinterDnD.Tk):
 
         try:
             all_rows = sheets.get_all_rows(worksheet)
-            sheets.ensure_header(worksheet, all_rows=all_rows)
-            if not all_rows:
-                all_rows = sheets._build_header_rows(0)
+            all_rows = sheets.ensure_header(worksheet, all_rows=all_rows)
         except Exception:
             self.after(0, lambda: self.set_status(
                 "Could not connect to Google Sheets. Check your internet connection and credentials.",
@@ -252,7 +250,6 @@ class HDProcessorApp(TkinterDnD.Tk):
                 if warn_no_items:
                     warn_msg = f"Warning: No line items detected in {filename}. Row added with blank item columns."
                     self.after(0, lambda m=warn_msg: self.set_status(m, ERROR_CLR))
-                    warn_no_items = False
             except Exception:
                 msg = "Could not connect to Google Sheets. Check your internet connection and credentials."
                 self.after(0, lambda msg=msg: self.set_status(msg, ERROR_CLR))
