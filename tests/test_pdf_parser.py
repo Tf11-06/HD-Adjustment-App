@@ -1,265 +1,262 @@
+"""Tests for pdf_parser.parse_pdf() using mock pdfplumber tables."""
+
 import pytest
+from unittest.mock import MagicMock, patch, call
 import pdf_parser as parser
 
-# Full text extracted from a real Home Depot 812 adjustment PDF
-SAMPLE_TEXT = """
-Credit/Debit Adjustment
-812
-ADJUSTMENT NUMBER: 0
-AMOUNT: 240.13
-HANDLING: A - Off Invoice
-CREDIT DEBIT: D - Debit
-INVOICE NUMBER / ORDER NUMBER: 7573 / 1099173067
-INVOICE DATE / PO DATE: 2026-01-28 / 2026-01-26
-ADJUSTMENT DATE: 2026-02-24
-VENDOR NUMBER: 000873237 / 580025
-DEPARTMENT NUMBER: 28
-BT - BILL TO:
-KLEAR CONCEPTS LLC
-NOTES/COMMENTS/SPECIAL INSTRUCTIONS:
-ST - StoreNumber: 5089
-RV: 500880949
-"""
+
+def _make_pdf(tables):
+    """Build a mock pdfplumber PDF that returns the given list of tables."""
+    page = MagicMock()
+    page.extract_tables.return_value = tables
+    pdf = MagicMock()
+    pdf.pages = [page]
+    pdf.__enter__ = lambda s: pdf
+    pdf.__exit__ = MagicMock(return_value=False)
+    return pdf
 
 
-def test_parse_header_adjustment_number():
-    h = parser._parse_header(SAMPLE_TEXT)
-    assert h["Adjustment #"] == "0"
+# ── Table fixtures ─────────────────────────────────────────────────────────────
 
-
-def test_parse_header_adjustment_date():
-    h = parser._parse_header(SAMPLE_TEXT)
-    assert h["Adjustment Date"] == "2026-02-24"
-
-
-def test_parse_header_invoice_and_order():
-    h = parser._parse_header(SAMPLE_TEXT)
-    assert h["Invoice #"] == "7573"
-    assert h["Order #"] == "1099173067"
-
-
-def test_parse_header_invoice_date_and_po_date():
-    h = parser._parse_header(SAMPLE_TEXT)
-    assert h["Invoice Date"] == "2026-01-28"
-    assert h["PO Date"] == "2026-01-26"
-
-
-def test_parse_header_credit_debit():
-    h = parser._parse_header(SAMPLE_TEXT)
-    assert h["Credit/Debit"] == "D - Debit"
-
-
-def test_parse_header_total_amount():
-    h = parser._parse_header(SAMPLE_TEXT)
-    assert h["Total Amount"] == "240.13"
-
-
-def test_parse_header_handling():
-    h = parser._parse_header(SAMPLE_TEXT)
-    assert h["Handling"] == "A - Off Invoice"
-
-
-def test_parse_header_store_number():
-    h = parser._parse_header(SAMPLE_TEXT)
-    assert h["Store #"] == "5089"
-
-
-def test_parse_header_vendor_number():
-    h = parser._parse_header(SAMPLE_TEXT)
-    assert h["Vendor #"] == "000873237 / 580025"
-
-
-def test_parse_header_dept_number():
-    h = parser._parse_header(SAMPLE_TEXT)
-    assert h["Dept #"] == "28"
-
-
-def test_parse_header_missing_field_returns_empty_string():
-    h = parser._parse_header("ADJUSTMENT NUMBER: 5\n")
-    assert h["Store #"] == ""
-    assert h["Invoice #"] == ""
-
-
-# Line item test data — mimics what pdfplumber.extract_table() returns
-# Columns: LINE, SKU, VENDOR PN, UPC GTIN, ADJ REASON, DESC, SELLERS INV #, CREDIT DEBIT, QTY, UNIT PRICE, UNIT DIFF, ITEM TOTAL
-SAMPLE_TABLE_ROWS = [
+# Table 0 — main invoice body
+_T0 = [
+    # row 0: header text blob
+    [
+        "Credit/Debit Adjustment 812\n"
+        "ADJUSTMENT NUMBER: 9999\n"
+        "AMOUNT: 278.03\n"
+        "HANDLING: A - Off Invoice\n"
+        "CREDIT DEBIT: C - Credit\n"
+        "INVOICE NUMBER / ORDER NUMBER: 7573 / 1099173067\n"
+        "INVOICE DATE / PO DATE: 2026-01-28 / 2026-01-26\n",
+        None, None,
+    ],
+    # line-item header row
     ["LINE", "SKU", "VENDOR PN", "UPC GTIN", "ADJUSTMENT REASON",
      "DESCRIPTION", "SELLERS INVOICE #", "CREDIT DEBIT", "QTY",
-     "UNIT PRICE RETAIL PRICE", "UNIT PRICE DIFFERENCE", "ITEM TOTAL"],
-    # First row: credit-only — "24" is ADJUSTMENT REASON (index 4), not UPC (index 3)
-    [None, None, None, None, "24", None, "7573", "C - Credit", None, None, None, "38.99"],
-    [None, "175525", "900690", "06", None, None, "7573", "D - Debit",
-     "CREDIT DEBIT QTY: 12 EA", "UCP: 3.34 / INV: 3.3399", None, "40.08"],
-    [None, "588978", "900701", "06", None, None, "7573", "D - Debit",
-     "CREDIT DEBIT QTY: 48 EA", "UCP: 4.98 / INV: 4.9801", None, "239.04"],
+     "UNIT PRICE", "UNIT DIFF", "ITEM TOTAL"],
+    # credit summary row (adj_reason=24, Rule 1) — col 4 = ADJUSTMENT REASON
+    [None, None, None, None, "24", None, "7573", "C - Credit", None, None, None, "278.03"],
+    # debit row 1 — "06" at col 4 (ADJUSTMENT REASON), UPC GTIN col 3 = None
+    [None, "175525", "900690", None, "06", None, "7573", "D - Debit",
+     "QTY: 12 EA", "UCP - Unit CostPrice:3.34 INV:3.34", None, "40.08"],
+    # debit row 2
+    [None, "588978", "900701", None, "06", None, "7573", "D - Debit",
+     "QTY: 48 EA", "UCP - Unit CostPrice:4.98 INV:4.98", None, "239.04"],
+    # notes row (store number)
+    ["NOTES ST - StoreNumber: 5089 RV: 500880949", None, None, None, None, None, None, None, None, None, None, None],
 ]
 
-# Real-world PDF table rows: narrow columns cause numbers and text to wrap across lines
-REAL_PDF_TABLE_ROWS = [
-    ["LINE\nE", "SKU", "VENDOR\nPN", "UPC\nGTIN", "ADJUSTMENT\nREASON",
-     "DESCRIPTION\nITEM\nCOMMENTS", "SELLERS INVOICE\n#", "CREDIT\nDEBIT", "QTY",
-     "UNIT PRICE\nRETAIL PRICE", "UNIT PRICE\nDIFFERENCE", "ITEM\nTOTAL"],
-    [None, None, None, None, "24", None, "7573", "C -\nCredit", None, None, None, "38.99"],
-    [None, "17552\n5", "90069\n0", "06", None, None, "7573", "D -\nDebit",
-     "CREDIT DEBIT QTY:  12  EA -\nEach", "UCP - Unit Cost Price: 3.\n34\nINV: 3.3399", None, "40.08"],
-    [None, "58897\n8", "90070\n1", "06", None, None, "7573", "D -\nDebit",
-     "CREDIT DEBIT QTY:  48  EA -\nEach", "UCP - Unit Cost Price: 4.\n98\nINV: 4.9801", None, "239.04"],
+# Table 1 — sidebar metadata
+_T1 = [
+    ["2026-02-24\nADJUSTMENT DATE"],
+    ["ignored"],
+    [
+        "VENDOR NUMBER:\n000873237\n580025",
+        "DEPARTMENT NUMBER:\n28",
+    ],
 ]
 
-SAMPLE_TEXT_WITH_ITEMS = SAMPLE_TEXT + """
-LINE SKU VENDOR PN UPC GTIN ADJUSTMENT REASON DESCRIPTION SELLERS INVOICE # CREDIT DEBIT QTY UNIT PRICE ITEM TOTAL
- 175525 900690 06  7573 D - Debit CREDIT DEBIT QTY: 12 EA UCP: 3.34 / INV: 3.3399 40.08
- 588978 900701 06  7573 D - Debit CREDIT DEBIT QTY: 48 EA UCP: 4.98 / INV: 4.9801 239.04
-ALLOWANCE AND CHARGES INFORMATION:
-"""
+_TABLES_STANDARD = [_T0, _T1]
 
 
-def test_parse_line_items_from_tables_count():
-    items = parser._parse_line_items_from_tables(SAMPLE_TABLE_ROWS)
-    assert len(items) == 3
-
-
-def test_parse_line_items_from_tables_sku():
-    items = parser._parse_line_items_from_tables(SAMPLE_TABLE_ROWS)
-    assert items[0]["SKU"] == ""         # credit-only row, no SKU
-    assert items[1]["SKU"] == "175525"
-    assert items[2]["SKU"] == "588978"
-
-
-def test_parse_line_items_from_tables_vendor_pn():
-    items = parser._parse_line_items_from_tables(SAMPLE_TABLE_ROWS)
-    assert items[1]["Vendor PN"] == "900690"
-
-
-def test_parse_line_items_from_tables_upc():
-    items = parser._parse_line_items_from_tables(SAMPLE_TABLE_ROWS)
-    assert items[0]["UPC/GTIN"] == ""   # credit-only row — no UPC
-    assert items[1]["UPC/GTIN"] == "06"
-
-
-def test_parse_line_items_from_tables_line_cd():
-    items = parser._parse_line_items_from_tables(SAMPLE_TABLE_ROWS)
-    assert items[0]["Line C/D"] == "C - Credit"
-    assert items[1]["Line C/D"] == "D - Debit"
-
-
-def test_parse_line_items_from_tables_qty_and_unit():
-    items = parser._parse_line_items_from_tables(SAMPLE_TABLE_ROWS)
-    assert items[1]["QTY"] == "12"
-    assert items[1]["Unit"] == "EA"
-    assert items[0]["QTY"] == ""        # blank qty on credit-only row
-
-
-def test_parse_line_items_from_tables_unit_price():
-    items = parser._parse_line_items_from_tables(SAMPLE_TABLE_ROWS)
-    assert items[1]["Unit Price"] == "3.34"
-    assert items[2]["Unit Price"] == "4.98"
-
-
-def test_parse_line_items_from_tables_item_total():
-    items = parser._parse_line_items_from_tables(SAMPLE_TABLE_ROWS)
-    assert items[0]["Item Total"] == "38.99"
-    assert items[1]["Item Total"] == "40.08"
-    assert items[2]["Item Total"] == "239.04"
-
-
-def test_parse_line_items_from_tables_sellers_invoice():
-    items = parser._parse_line_items_from_tables(SAMPLE_TABLE_ROWS)
-    assert items[1]["Sellers Inv #"] == "7573"
-
-
-def test_parse_line_items_from_tables_empty_input():
-    items = parser._parse_line_items_from_tables([])
-    assert items == []
-
-
-def test_parse_line_items_from_tables_no_header_row():
-    items = parser._parse_line_items_from_tables([["foo", "bar"]])
-    assert items == []
-
-
-def test_parse_line_items_from_text_fallback_count():
-    items = parser._parse_line_items_from_text(SAMPLE_TEXT_WITH_ITEMS)
-    assert len(items) == 2
-
-
-def test_parse_line_items_from_text_fallback_sku():
-    items = parser._parse_line_items_from_text(SAMPLE_TEXT_WITH_ITEMS)
-    assert items[0]["SKU"] == "175525"
-    assert items[1]["SKU"] == "588978"
-
-
-REAL_VENDOR_TEXT = """
-VENDOR NUMBER:
-000873237
-580025
-DEPARTMENT NUMBER: 28
-"""
-
-
-def test_parse_header_vendor_number_two_line():
-    """Real PDFs put vendor # on two separate lines."""
-    h = parser._parse_header(REAL_VENDOR_TEXT)
-    assert h["Vendor #"] == "000873237 / 580025"
-
-
-def test_real_pdf_table_sku_rejoins_split_number():
-    items = parser._parse_line_items_from_tables(REAL_PDF_TABLE_ROWS)
-    assert items[1]["SKU"] == "175525"
-    assert items[2]["SKU"] == "588978"
-
-
-def test_real_pdf_table_vendor_pn_rejoins_split_number():
-    items = parser._parse_line_items_from_tables(REAL_PDF_TABLE_ROWS)
-    assert items[1]["Vendor PN"] == "900690"
-    assert items[2]["Vendor PN"] == "900701"
-
-
-def test_real_pdf_table_line_cd_normalized():
-    items = parser._parse_line_items_from_tables(REAL_PDF_TABLE_ROWS)
-    assert items[0]["Line C/D"] == "C - Credit"
-    assert items[1]["Line C/D"] == "D - Debit"
-
-
-def test_real_pdf_table_ucp_extracted_from_full_label():
-    items = parser._parse_line_items_from_tables(REAL_PDF_TABLE_ROWS)
-    assert items[1]["Unit Price"] == "3.34"
-    assert items[2]["Unit Price"] == "4.98"
-
-
-def test_real_pdf_table_credit_row_has_blank_sku_and_upc():
-    items = parser._parse_line_items_from_tables(REAL_PDF_TABLE_ROWS)
-    assert items[0]["SKU"] == ""
-    assert items[0]["UPC/GTIN"] == ""
-    assert items[0]["Item Total"] == "38.99"
-
-
-from unittest.mock import MagicMock, patch
-
-
-def test_parse_pdf_merges_header_into_rows():
-    """parse_pdf() returns {"header": dict, "items": list[dict]}."""
-    mock_page = MagicMock()
-    mock_page.extract_text.return_value = SAMPLE_TEXT
-    mock_page.extract_table.return_value = SAMPLE_TABLE_ROWS
-
-    mock_pdf = MagicMock()
-    mock_pdf.pages = [mock_page]
-    mock_pdf.__enter__ = lambda s: mock_pdf
-    mock_pdf.__exit__ = MagicMock(return_value=False)
-
-    with patch("pdf_parser.pdfplumber.open", return_value=mock_pdf):
+def test_parse_pdf_returns_dict():
+    with patch("pdf_parser.pdfplumber.open", return_value=_make_pdf(_TABLES_STANDARD)):
         result = parser.parse_pdf("fake.pdf")
-
     assert isinstance(result, dict)
-    assert "header" in result
-    assert "items" in result
-    assert result["header"]["Invoice #"] == "7573"
-    assert result["header"]["Adjustment Date"] == "2026-02-24"
-    assert len(result["items"]) == 3
-    assert result["items"][1]["SKU"] == "175525"
-    assert result["items"][2]["SKU"] == "588978"
-    for item in result["items"]:
-        assert "Item Total" in item
-        assert "SKU" in item
-        assert "Invoice #" not in item   # header fields NOT duplicated into items
+
+
+def test_parse_pdf_returns_none_when_fewer_than_two_tables():
+    with patch("pdf_parser.pdfplumber.open", return_value=_make_pdf([[]])):
+        result = parser.parse_pdf("fake.pdf")
+    assert result is None
+
+
+# ── Header fields ──────────────────────────────────────────────────────────────
+
+def test_invoice_num():
+    with patch("pdf_parser.pdfplumber.open", return_value=_make_pdf(_TABLES_STANDARD)):
+        r = parser.parse_pdf("fake.pdf")
+    assert r["invoice_num"] == "7573"
+
+
+def test_order_num():
+    with patch("pdf_parser.pdfplumber.open", return_value=_make_pdf(_TABLES_STANDARD)):
+        r = parser.parse_pdf("fake.pdf")
+    assert r["order_num"] == "1099173067"
+
+
+def test_adj_num():
+    with patch("pdf_parser.pdfplumber.open", return_value=_make_pdf(_TABLES_STANDARD)):
+        r = parser.parse_pdf("fake.pdf")
+    assert r["adj_num"] == "9999"
+
+
+def test_adj_date_from_sidebar():
+    with patch("pdf_parser.pdfplumber.open", return_value=_make_pdf(_TABLES_STANDARD)):
+        r = parser.parse_pdf("fake.pdf")
+    assert r["adj_date"] == "2026-02-24"
+
+
+def test_inv_date_and_po_date():
+    with patch("pdf_parser.pdfplumber.open", return_value=_make_pdf(_TABLES_STANDARD)):
+        r = parser.parse_pdf("fake.pdf")
+    assert r["inv_date"] == "2026-01-28"
+    assert r["po_date"] == "2026-01-26"
+
+
+def test_credit_debit():
+    with patch("pdf_parser.pdfplumber.open", return_value=_make_pdf(_TABLES_STANDARD)):
+        r = parser.parse_pdf("fake.pdf")
+    assert r["credit_debit"] == "C - Credit"
+
+
+def test_amount_is_float():
+    with patch("pdf_parser.pdfplumber.open", return_value=_make_pdf(_TABLES_STANDARD)):
+        r = parser.parse_pdf("fake.pdf")
+    assert r["amount"] == pytest.approx(278.03)
+
+
+def test_handling():
+    with patch("pdf_parser.pdfplumber.open", return_value=_make_pdf(_TABLES_STANDARD)):
+        r = parser.parse_pdf("fake.pdf")
+    assert r["handling"] == "A - Off Invoice"
+
+
+def test_store_from_notes_row():
+    with patch("pdf_parser.pdfplumber.open", return_value=_make_pdf(_TABLES_STANDARD)):
+        r = parser.parse_pdf("fake.pdf")
+    assert r["store"] == "5089"
+
+
+def test_vendor_num_two_part():
+    with patch("pdf_parser.pdfplumber.open", return_value=_make_pdf(_TABLES_STANDARD)):
+        r = parser.parse_pdf("fake.pdf")
+    assert r["vendor_num"] == "000873237 / 580025"
+
+
+def test_dept():
+    with patch("pdf_parser.pdfplumber.open", return_value=_make_pdf(_TABLES_STANDARD)):
+        r = parser.parse_pdf("fake.pdf")
+    assert r["dept"] == "28"
+
+
+def test_file_basename():
+    with patch("pdf_parser.pdfplumber.open", return_value=_make_pdf(_TABLES_STANDARD)):
+        r = parser.parse_pdf("/some/path/invoice.pdf")
+    assert r["_file"] == "invoice.pdf"
+
+
+# ── Rule 1: credit_line (adj_reason=24) ──────────────────────────────────────
+
+def test_credit_line_present():
+    with patch("pdf_parser.pdfplumber.open", return_value=_make_pdf(_TABLES_STANDARD)):
+        r = parser.parse_pdf("fake.pdf")
+    assert r["credit_line"] is not None
+
+
+def test_credit_line_adj_reason():
+    with patch("pdf_parser.pdfplumber.open", return_value=_make_pdf(_TABLES_STANDARD)):
+        r = parser.parse_pdf("fake.pdf")
+    assert r["credit_line"]["adj_reason"] == "24"
+
+
+def test_credit_line_sellers_inv():
+    with patch("pdf_parser.pdfplumber.open", return_value=_make_pdf(_TABLES_STANDARD)):
+        r = parser.parse_pdf("fake.pdf")
+    assert r["credit_line"]["sellers_inv"] == "7573"
+
+
+def test_credit_line_item_total_is_float():
+    with patch("pdf_parser.pdfplumber.open", return_value=_make_pdf(_TABLES_STANDARD)):
+        r = parser.parse_pdf("fake.pdf")
+    assert r["credit_line"]["item_total"] == pytest.approx(278.03)
+
+
+def test_credit_line_has_no_sku_or_qty_fields():
+    """Rule 1: credit_line dict must NOT contain sku/qty/unit_price."""
+    with patch("pdf_parser.pdfplumber.open", return_value=_make_pdf(_TABLES_STANDARD)):
+        r = parser.parse_pdf("fake.pdf")
+    cl = r["credit_line"]
+    assert "sku" not in cl
+    assert "qty" not in cl
+    assert "unit_price" not in cl
+
+
+# ── Rule 2: debit items ───────────────────────────────────────────────────────
+
+def test_debit_items_count():
+    with patch("pdf_parser.pdfplumber.open", return_value=_make_pdf(_TABLES_STANDARD)):
+        r = parser.parse_pdf("fake.pdf")
+    assert len(r["debit_items"]) == 2
+
+
+def test_debit_sku_whitespace_joined():
+    with patch("pdf_parser.pdfplumber.open", return_value=_make_pdf(_TABLES_STANDARD)):
+        r = parser.parse_pdf("fake.pdf")
+    assert r["debit_items"][0]["sku"] == "175525"
+    assert r["debit_items"][1]["sku"] == "588978"
+
+
+def test_debit_qty_is_int():
+    with patch("pdf_parser.pdfplumber.open", return_value=_make_pdf(_TABLES_STANDARD)):
+        r = parser.parse_pdf("fake.pdf")
+    assert r["debit_items"][0]["qty"] == 12
+    assert r["debit_items"][1]["qty"] == 48
+
+
+def test_debit_unit():
+    with patch("pdf_parser.pdfplumber.open", return_value=_make_pdf(_TABLES_STANDARD)):
+        r = parser.parse_pdf("fake.pdf")
+    assert r["debit_items"][0]["unit"] == "EA"
+
+
+def test_debit_unit_price_is_float():
+    with patch("pdf_parser.pdfplumber.open", return_value=_make_pdf(_TABLES_STANDARD)):
+        r = parser.parse_pdf("fake.pdf")
+    assert r["debit_items"][0]["unit_price"] == pytest.approx(3.34)
+    assert r["debit_items"][1]["unit_price"] == pytest.approx(4.98)
+
+
+def test_debit_item_total_is_float():
+    with patch("pdf_parser.pdfplumber.open", return_value=_make_pdf(_TABLES_STANDARD)):
+        r = parser.parse_pdf("fake.pdf")
+    assert r["debit_items"][0]["item_total"] == pytest.approx(40.08)
+    assert r["debit_items"][1]["item_total"] == pytest.approx(239.04)
+
+
+# ── Rule 3: compact format — no credit row ────────────────────────────────────
+
+_T0_COMPACT = [
+    [
+        "INVOICE NUMBER / ORDER NUMBER: 8888 / 1111111111\n"
+        "ADJUSTMENT NUMBER: 1\n"
+        "AMOUNT: 40.08\n"
+        "HANDLING: A - Off Invoice\n"
+        "CREDIT DEBIT: D - Debit\n"
+        "INVOICE DATE / PO DATE: 2026-01-28 / 2026-01-26\n",
+        None, None,
+    ],
+    ["LINE", "SKU", "VENDOR PN", "X", "ADJUSTMENT REASON",
+     "DESC", "SELLERS INVOICE #", "CREDIT DEBIT", "QTY", "UNIT PRICE", "DIFF", "ITEM TOTAL"],
+    # Only debit row — no 24 row; "06" at col 4 (ADJUSTMENT REASON)
+    [None, "175525", "900690", None, "06", None, "8888", "D - Debit",
+     "QTY: 12 EA", "UCP - Unit CostPrice:3.34", None, "40.08"],
+    ["NOTES ST - StoreNumber: 1001", None, None, None, None, None, None, None, None, None, None, None],
+]
+
+_TABLES_COMPACT = [_T0_COMPACT, _T1]
+
+
+def test_compact_format_credit_line_is_none():
+    """Rule 3: no 24 row → credit_line is None."""
+    with patch("pdf_parser.pdfplumber.open", return_value=_make_pdf(_TABLES_COMPACT)):
+        r = parser.parse_pdf("fake.pdf")
+    assert r["credit_line"] is None
+
+
+def test_compact_format_debit_items_still_parsed():
+    with patch("pdf_parser.pdfplumber.open", return_value=_make_pdf(_TABLES_COMPACT)):
+        r = parser.parse_pdf("fake.pdf")
+    assert len(r["debit_items"]) == 1
+    assert r["debit_items"][0]["sku"] == "175525"

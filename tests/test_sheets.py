@@ -1,246 +1,226 @@
+"""Tests for writers.SheetsWriter using a mocked gspread Worksheet."""
+
 import pytest
-from unittest.mock import MagicMock, patch, call
-import sheets
-from pdf_parser import HEADER_COLS, ITEM_COLS
+from unittest.mock import MagicMock, patch
+import gspread
+
+from writers.sheets_writer import SheetsWriter, _build_header_rows, _count_li_groups
+from pdf_parser import HEADER_COLS, LI_COLS
+
+_N_INV = len(HEADER_COLS)  # 12
+_N_LI  = len(LI_COLS)      # 9
+
+# ── invoice fixtures ──────────────────────────────────────────────────────────
+
+_INV_1 = {
+    "invoice_num": "7573", "order_num": "1099173067", "adj_num": "9999",
+    "adj_date": "2026-02-24", "inv_date": "2026-01-28", "po_date": "2026-01-26",
+    "credit_debit": "C - Credit", "amount": 278.03, "handling": "A - Off Invoice",
+    "store": "5089", "vendor_num": "000873237 / 580025", "dept": "28",
+    "credit_line": {"adj_reason": "24", "sellers_inv": "7573",
+                    "line_cd": "C - Credit", "item_total": 278.03},
+    "debit_items": [
+        {"sku": "175525", "vendor_pn": "900690", "adj_reason": "06",
+         "sellers_inv": "7573", "line_cd": "D - Debit",
+         "qty": 12, "unit": "EA", "unit_price": 3.34, "item_total": 40.08},
+    ],
+    "_file": "7573.pdf",
+}
+
+_INV_COMPACT = {
+    "invoice_num": "8888", "order_num": "2222", "adj_num": "1",
+    "adj_date": "2026-03-01", "inv_date": "2026-02-15", "po_date": "2026-02-10",
+    "credit_debit": "D - Debit", "amount": 40.08, "handling": "A - Off Invoice",
+    "store": "1001", "vendor_num": "000873237", "dept": "28",
+    "credit_line": None,
+    "debit_items": [
+        {"sku": "175525", "vendor_pn": "900690", "adj_reason": "06",
+         "sellers_inv": "8888", "line_cd": "D - Debit",
+         "qty": 12, "unit": "EA", "unit_price": 3.34, "item_total": 40.08},
+    ],
+    "_file": "8888.pdf",
+}
 
 
-@pytest.fixture
-def mock_worksheet():
-    ws = MagicMock()
-    header_row1 = [""] * len(HEADER_COLS)
-    header_row2 = list(HEADER_COLS)
-    ws.get_all_values.return_value = [header_row1, header_row2]
-    return ws
+def _make_writer(all_rows=None):
+    """Return a connected SheetsWriter with a mocked worksheet."""
+    ws = MagicMock(spec=gspread.Worksheet)
+    ws.get_all_values.return_value = all_rows or []
+    writer = SheetsWriter({"sheet_id": "x", "credentials_file": "x.json",
+                            "worksheet_name": "Adjustments"})
+    writer._worksheet = ws
+    writer._all_rows = list(all_rows) if all_rows else []
+    return writer, ws
 
 
-# ── _build_header_rows ─────────────────────────────────────────────────────
+# ── _build_header_rows helper ─────────────────────────────────────────────────
 
-def test_build_header_rows_zero_items():
-    rows = sheets._build_header_rows(0)
-    assert len(rows) == 2
-    assert rows[0] == [""] * len(HEADER_COLS)
-    assert rows[1] == list(HEADER_COLS)
+def test_build_header_rows_field_names():
+    rows = _build_header_rows(0)
+    assert rows[1][:_N_INV] == list(HEADER_COLS)
 
 
-def test_build_header_rows_one_item():
-    rows = sheets._build_header_rows(1)
-    assert rows[0][len(HEADER_COLS)] == "LINE ITEM 1"
-    assert rows[1][len(HEADER_COLS):] == list(ITEM_COLS)
-    assert len(rows[0]) == len(HEADER_COLS) + len(ITEM_COLS)
+def test_build_header_rows_li1_label():
+    rows = _build_header_rows(1)
+    assert "LINE ITEM 1" in rows[0][_N_INV]
+    assert rows[1][_N_INV:_N_INV + _N_LI] == list(LI_COLS)
 
 
-def test_build_header_rows_three_items():
-    rows = sheets._build_header_rows(3)
-    item_labels = [c for c in rows[0] if c.startswith("LINE ITEM")]
-    assert item_labels == ["LINE ITEM 1", "LINE ITEM 2", "LINE ITEM 3"]
-    expected_len = len(HEADER_COLS) + 3 * len(ITEM_COLS)
-    assert len(rows[0]) == expected_len
-    assert len(rows[1]) == expected_len
+def test_build_header_rows_three_li_groups():
+    rows = _build_header_rows(3)
+    labels = [c for c in rows[0] if "LINE ITEM" in str(c)]
+    assert len(labels) == 4  # LI1 + LI2 + LI3 + LI4
 
 
-# ── _get_max_items ─────────────────────────────────────────────────────────
-
-def test_get_max_items_empty():
-    assert sheets._get_max_items([]) == 0
-
-
-def test_get_max_items_no_item_groups():
-    header_rows = sheets._build_header_rows(0)
-    assert sheets._get_max_items(header_rows) == 0
+def test_count_li_groups_zero():
+    rows = _build_header_rows(0)
+    assert _count_li_groups(rows) == 1  # LI1 always present
 
 
-def test_get_max_items_three_groups():
-    header_rows = sheets._build_header_rows(3)
-    assert sheets._get_max_items(header_rows) == 3
+def test_count_li_groups_three():
+    rows = _build_header_rows(3)
+    assert _count_li_groups(rows) == 4  # LI1 + 3 debit
 
 
-# ── ensure_header ──────────────────────────────────────────────────────────
+# ── is_initialized ────────────────────────────────────────────────────────────
 
-def test_ensure_header_writes_two_rows_when_empty(mock_worksheet):
-    mock_worksheet.get_all_values.return_value = []
-    sheets.ensure_header(mock_worksheet)
-    mock_worksheet.update.assert_called_once()
-    written = mock_worksheet.update.call_args[0][0]
-    assert len(written) == 2
-    assert written[1] == list(HEADER_COLS)
+def test_not_initialized_when_empty():
+    writer, _ = _make_writer([])
+    assert not writer.is_initialized()
 
 
-def test_ensure_header_skips_when_header_exists(mock_worksheet):
-    sheets.ensure_header(mock_worksheet)
-    mock_worksheet.update.assert_not_called()
+def test_initialized_after_initialize_headers():
+    writer, ws = _make_writer([])
+    ws.update = MagicMock()
+    writer.initialize_headers(0)
+    assert writer.is_initialized()
 
 
-def test_ensure_header_uses_all_rows_arg(mock_worksheet):
-    header_rows = sheets._build_header_rows(0)
-    sheets.ensure_header(mock_worksheet, all_rows=header_rows)
-    mock_worksheet.update.assert_not_called()
-    mock_worksheet.get_all_values.assert_not_called()
+# ── initialize_headers ────────────────────────────────────────────────────────
+
+def test_initialize_headers_calls_update(tmp_path):
+    writer, ws = _make_writer([])
+    writer.initialize_headers(1)
+    ws.update.assert_called_once()
+    written = ws.update.call_args[0][0]
+    assert written[1][:_N_INV] == list(HEADER_COLS)
 
 
-# ── ensure_capacity ────────────────────────────────────────────────────────
+# ── find_duplicate ────────────────────────────────────────────────────────────
 
-def test_ensure_capacity_expands_when_needed(mock_worksheet):
-    all_rows = sheets._build_header_rows(0)
-    result = sheets.ensure_capacity(mock_worksheet, 2, all_rows)
-    mock_worksheet.update.assert_called_once()
-    assert sheets._get_max_items(result) == 2
+def test_find_duplicate_false_on_empty():
+    writer, _ = _make_writer([])
+    assert not writer.find_duplicate("7573")
 
 
-def test_ensure_capacity_no_op_when_sufficient(mock_worksheet):
-    all_rows = sheets._build_header_rows(3)
-    result = sheets.ensure_capacity(mock_worksheet, 2, all_rows)
-    mock_worksheet.update.assert_not_called()
-    assert result is all_rows
+def test_find_duplicate_true_after_row_exists():
+    header = _build_header_rows(1)
+    data_row = ["7573"] + [""] * (_N_INV - 1 + _N_LI * 2)
+    writer, _ = _make_writer(header + [data_row])
+    assert writer.find_duplicate("7573")
 
 
-def test_ensure_capacity_returns_updated_cache(mock_worksheet):
-    data_row = ["data"] * (len(HEADER_COLS) + len(ITEM_COLS))
-    all_rows = sheets._build_header_rows(1) + [data_row]
-    result = sheets.ensure_capacity(mock_worksheet, 3, all_rows)
-    assert sheets._get_max_items(result) == 3
-    assert result[2] == data_row
+def test_find_duplicate_false_for_different_invoice():
+    header = _build_header_rows(1)
+    data_row = ["7573"] + [""] * (_N_INV - 1 + _N_LI * 2)
+    writer, _ = _make_writer(header + [data_row])
+    assert not writer.find_duplicate("9999")
 
 
-def test_ensure_capacity_with_partial_header_discards_orphan(mock_worksheet):
-    # If sheet has only 1 row (corrupted/partial state), ensure_capacity
-    # returns a clean header without the orphaned row — documented behavior.
-    orphaned = sheets._build_header_rows(0)[:1]  # only row1, no row2
-    assert len(orphaned) == 1
-    result = sheets.ensure_capacity(mock_worksheet, 2, orphaned)
-    assert sheets._get_max_items(result) == 2
-    assert len(result) == 2  # just the 2 header rows, orphan discarded
+# ── expand_columns_if_needed ──────────────────────────────────────────────────
+
+def test_expand_calls_update_when_needed():
+    header = _build_header_rows(0)
+    writer, ws = _make_writer(header)
+    writer.expand_columns_if_needed(3)
+    ws.update.assert_called_once()
+    assert _count_li_groups(writer._all_rows) >= 4
 
 
-# ── find_duplicate ─────────────────────────────────────────────────────────
-
-def test_find_duplicate_returns_true_when_invoice_exists(mock_worksheet):
-    header_rows = sheets._build_header_rows(1)
-    invoice_col = HEADER_COLS.index("Invoice #")
-    data_row = [""] * (len(HEADER_COLS) + len(ITEM_COLS))
-    data_row[invoice_col] = "7573"
-    all_rows = header_rows + [data_row]
-    assert sheets.find_duplicate(mock_worksheet, "7573", all_rows=all_rows) is True
+def test_expand_no_op_when_sufficient():
+    header = _build_header_rows(5)
+    writer, ws = _make_writer(header)
+    writer.expand_columns_if_needed(2)
+    ws.update.assert_not_called()
 
 
-def test_find_duplicate_returns_false_when_no_match(mock_worksheet):
-    assert sheets.find_duplicate(mock_worksheet, "9999") is False
+# ── append_invoice ────────────────────────────────────────────────────────────
+
+def test_append_invoice_calls_append_rows():
+    header = _build_header_rows(1)
+    writer, ws = _make_writer(header)
+    writer.append_invoice(_INV_1)
+    ws.append_rows.assert_called_once()
 
 
-def test_find_duplicate_returns_false_on_empty_sheet(mock_worksheet):
-    assert sheets.find_duplicate(mock_worksheet, "7573", all_rows=[]) is False
+def test_append_invoice_row_starts_with_invoice_num():
+    header = _build_header_rows(1)
+    writer, ws = _make_writer(header)
+    writer.append_invoice(_INV_1)
+    row = ws.append_rows.call_args[0][0][0]
+    assert row[0] == "7573"
 
 
-def test_find_duplicate_skips_both_header_rows(mock_worksheet):
-    header_rows = sheets._build_header_rows(0)
-    assert sheets.find_duplicate(mock_worksheet, "Invoice #", all_rows=header_rows) is False
+def test_rule1_li1_adj_reason_populated():
+    header = _build_header_rows(1)
+    writer, ws = _make_writer(header)
+    writer.append_invoice(_INV_1)
+    row = ws.append_rows.call_args[0][0][0]
+    li1_start = _N_INV
+    assert row[li1_start + 2] == "24"        # Adj Reason
 
 
-# ── append_invoice ─────────────────────────────────────────────────────────
-
-def test_append_invoice_writes_exactly_one_row(mock_worksheet):
-    all_rows = sheets._build_header_rows(0)
-    invoice_data = {
-        "header": {col: "h" for col in HEADER_COLS},
-        "items": [{col: "x" for col in ITEM_COLS}],
-    }
-    sheets.append_invoice(mock_worksheet, invoice_data, all_rows)
-    assert mock_worksheet.append_rows.call_count == 1
-    written = mock_worksheet.append_rows.call_args[0][0]
-    assert len(written) == 1
+def test_rule1_li1_sku_blank():
+    header = _build_header_rows(1)
+    writer, ws = _make_writer(header)
+    writer.append_invoice(_INV_1)
+    row = ws.append_rows.call_args[0][0][0]
+    li1_start = _N_INV
+    assert row[li1_start] == ""              # SKU blank
 
 
-def test_append_invoice_row_header_fields_in_order(mock_worksheet):
-    all_rows = sheets._build_header_rows(1)
-    header_data = {col: f"h{i}" for i, col in enumerate(HEADER_COLS)}
-    invoice_data = {"header": header_data, "items": [{col: "" for col in ITEM_COLS}]}
-    sheets.append_invoice(mock_worksheet, invoice_data, all_rows)
-    row = mock_worksheet.append_rows.call_args[0][0][0]
-    assert row[:len(HEADER_COLS)] == [f"h{i}" for i in range(len(HEADER_COLS))]
+def test_rule3_compact_li1_all_blank():
+    header = _build_header_rows(1)
+    writer, ws = _make_writer(header)
+    writer.append_invoice(_INV_COMPACT)
+    row = ws.append_rows.call_args[0][0][0]
+    li1_start = _N_INV
+    for offset in range(_N_LI):
+        assert row[li1_start + offset] == ""
 
 
-def test_append_invoice_row_item_fields_after_header(mock_worksheet):
-    all_rows = sheets._build_header_rows(1)
-    item_data = {col: f"it{j}" for j, col in enumerate(ITEM_COLS)}
-    invoice_data = {"header": {col: "" for col in HEADER_COLS}, "items": [item_data]}
-    sheets.append_invoice(mock_worksheet, invoice_data, all_rows)
-    row = mock_worksheet.append_rows.call_args[0][0][0]
-    item_slice = row[len(HEADER_COLS):len(HEADER_COLS) + len(ITEM_COLS)]
-    assert item_slice == [f"it{j}" for j in range(len(ITEM_COLS))]
+def test_debit_items_start_at_li2():
+    header = _build_header_rows(1)
+    writer, ws = _make_writer(header)
+    writer.append_invoice(_INV_1)
+    row = ws.append_rows.call_args[0][0][0]
+    li2_start = _N_INV + _N_LI
+    assert row[li2_start] == "175525"        # SKU of first debit item
 
 
-def test_append_invoice_pads_unused_item_slots(mock_worksheet):
-    all_rows = sheets._build_header_rows(3)
-    invoice_data = {
-        "header": {col: "" for col in HEADER_COLS},
-        "items": [{col: "x" for col in ITEM_COLS}],
-    }
-    sheets.append_invoice(mock_worksheet, invoice_data, all_rows)
-    row = mock_worksheet.append_rows.call_args[0][0][0]
-    expected_len = len(HEADER_COLS) + 3 * len(ITEM_COLS)
-    assert len(row) == expected_len
-    unused = row[len(HEADER_COLS) + len(ITEM_COLS):]
-    assert all(v == "" for v in unused)
+# ── connect() error paths ─────────────────────────────────────────────────────
 
-
-def test_append_invoice_empty_items_list(mock_worksheet):
-    all_rows = sheets._build_header_rows(0)
-    invoice_data = {"header": {col: "v" for col in HEADER_COLS}, "items": []}
-    sheets.append_invoice(mock_worksheet, invoice_data, all_rows)
-    written = mock_worksheet.append_rows.call_args[0][0]
-    assert len(written) == 1
-    assert len(written[0]) == len(HEADER_COLS)
-
-
-def test_append_invoice_expands_header_when_needed(mock_worksheet):
-    all_rows = sheets._build_header_rows(1)
-    invoice_data = {
-        "header": {col: "" for col in HEADER_COLS},
-        "items": [{col: "" for col in ITEM_COLS} for _ in range(3)],
-    }
-    result = sheets.append_invoice(mock_worksheet, invoice_data, all_rows)
-    # Header must have been written to the sheet
-    mock_worksheet.update.assert_called_once()
-    # Returned cache must reflect the expanded header (3 item groups, not 1)
-    assert sheets._get_max_items(result) == 3
-    # Data row must be padded to match the expanded header width
-    data_row = result[-1]
-    assert len(data_row) == len(HEADER_COLS) + 3 * len(ITEM_COLS)
-
-
-def test_append_invoice_returns_updated_all_rows(mock_worksheet):
-    all_rows = sheets._build_header_rows(1)
-    invoice_data = {
-        "header": {col: "" for col in HEADER_COLS},
-        "items": [{col: "" for col in ITEM_COLS}],
-    }
-    result = sheets.append_invoice(mock_worksheet, invoice_data, all_rows)
-    assert len(result) == 3
-
-
-# ── connect_sheet (unchanged) ───────────────────────────────────────────────
-
-def test_connect_sheet_raises_on_missing_credentials(tmp_path):
-    cfg = {
+def test_connect_raises_on_missing_credentials(tmp_path):
+    writer = SheetsWriter({
         "sheet_id": "abc",
         "credentials_file": str(tmp_path / "nonexistent.json"),
         "worksheet_name": "Adjustments",
-    }
+    })
     with pytest.raises(FileNotFoundError, match="Credentials file not found"):
-        sheets.connect_sheet(cfg)
+        writer.connect()
 
 
-def test_connect_sheet_raises_on_bad_sheet_id(tmp_path):
-    import gspread
-    creds_file = tmp_path / "sa.json"
-    creds_file.write_text('{"type":"service_account"}')
-    cfg = {
+def test_connect_raises_on_bad_sheet_id(tmp_path):
+    creds = tmp_path / "sa.json"
+    creds.write_text('{"type":"service_account"}')
+    writer = SheetsWriter({
         "sheet_id": "bad_id",
-        "credentials_file": str(creds_file),
+        "credentials_file": str(creds),
         "worksheet_name": "Adjustments",
-    }
-    with patch("sheets.gspread.service_account") as mock_sa:
+    })
+    with patch("writers.sheets_writer.gspread.service_account") as mock_sa:
         mock_client = MagicMock()
         mock_sa.return_value = mock_client
         mock_client.open_by_key.side_effect = gspread.exceptions.SpreadsheetNotFound
         with pytest.raises(ValueError, match="Could not find the Google Sheet"):
-            sheets.connect_sheet(cfg)
+            writer.connect()

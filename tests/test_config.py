@@ -43,7 +43,11 @@ def test_save_config_writes_json():
 
 
 def test_save_and_load_roundtrip():
-    original = {"sheet_id": "sheet999", "credentials_file": "creds.json", "worksheet_name": "Adjustments"}
+    original = {
+        "sheet_id": "sheet999", "credentials_file": "creds.json",
+        "worksheet_name": "Adjustments", "excel_file_path": "",
+        "active_destination": "sheets",
+    }
     config.save_config(original)
     loaded = config.load_config()
     assert loaded == original

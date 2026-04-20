@@ -1,0 +1,110 @@
+name: Build Installers
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+
+jobs:
+  # ── macOS DMG ──────────────────────────────────────────────────────────────
+  build-mac:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Run tests
+        run: python3 -m pytest tests/test_pdf_parser.py tests/test_excel_writer.py tests/test_sheets.py tests/test_config.py -q
+
+      - name: Build app bundle
+        run: pyinstaller build_mac.spec --noconfirm
+
+      - name: Package DMG
+        run: bash installer/mac_dmg.sh
+
+      - name: Upload DMG
+        uses: actions/upload-artifact@v4
+        with:
+          name: HDProcessor-mac
+          path: dist/HDProcessor.dmg
+
+  # ── Windows EXE installer ──────────────────────────────────────────────────
+  build-windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Run tests
+        run: python -m pytest tests/test_pdf_parser.py tests/test_excel_writer.py tests/test_sheets.py tests/test_config.py -q
+
+      - name: Build exe
+        run: pyinstaller build.spec --noconfirm
+
+      - name: Install Inno Setup
+        run: choco install innosetup -y
+
+      - name: Build installer
+        run: iscc installer\windows.iss
+
+      - name: Upload installer
+        uses: actions/upload-artifact@v4
+        with:
+          name: HDProcessor-windows
+          path: installer\Output\HDProcessor-Setup.exe
+
+  # ── Create GitHub Release ──────────────────────────────────────────────────
+  release:
+    needs: [build-mac, build-windows]
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/')
+    steps:
+      - name: Download Mac artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: HDProcessor-mac
+          path: artifacts/
+
+      - name: Download Windows artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: HDProcessor-windows
+          path: artifacts/
+
+      - name: Create release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            artifacts/HDProcessor.dmg
+            artifacts/HDProcessor-Setup.exe
+          body: |
+            ## HD Adjustment Processor ${{ github.ref_name }}
+
+            ### Installation
+
+            **Mac:** Download `HDProcessor.dmg`, open it, drag `HDProcessor.app` to Applications.
+            First launch: right-click → Open → Open (one-time Gatekeeper confirmation).
+
+            **Windows:** Download `HDProcessor-Setup.exe`, double-click, follow the installer.
+            If Windows SmartScreen shows a warning: click "More info" → "Run anyway".
+
+            ### What's included
+            - Drag & drop up to 20 HD 812 adjustment PDFs
+            - Output to Google Sheets or Excel (.xlsx) — toggle in the app
+            - Correct credit/debit line item structure (Rule 1–5 parser)
+            - Duplicate invoice detection with batch skip/add options

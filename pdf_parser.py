@@ -1,208 +1,203 @@
+"""
+HD Klear 812 — PDF Parser
+Parses Home Depot 812 EDI Credit/Debit Adjustment invoice PDFs.
+
+Rules:
+  Rule 1 — LI1 is always the credit summary (adj_reason='24'):
+            only adj_reason, sellers_inv, line_cd, item_total populated.
+            SKU / Vendor PN / QTY / Unit / Unit Price are intentionally BLANK.
+  Rule 2 — Debit line items (adj_reason='06' / '01 - Pricing Error') go in LI2+.
+  Rule 3 — Compact-format invoices have no '24' row: credit_line=None, debits start at LI2.
+  Rule 4 — Deduplicate by invoice number (handled by caller).
+  Rule 5 — Numeric values (QTY, prices, totals) stored as Python numbers, not strings.
+"""
+
 import re
 import pdfplumber
 
+# Column name constants used by writers
 HEADER_COLS = [
     "Invoice #", "Order #", "Adjustment #", "Adjustment Date",
     "Invoice Date", "PO Date", "Credit/Debit", "Total Amount",
     "Handling", "Store #", "Vendor #", "Dept #",
 ]
 
-ITEM_COLS = [
-    "SKU", "Vendor PN", "UPC/GTIN", "Sellers Inv #", "Line C/D",
+LI_COLS = [
+    "SKU", "Vendor PN", "Adj Reason", "Sellers Inv #", "Line C/D",
     "QTY", "Unit", "Unit Price", "Item Total",
 ]
 
 
-def parse_pdf(pdf_path: str) -> dict:
-    """Parse a Home Depot 812 PDF.
+# ─── helpers ──────────────────────────────────────────────────────────────────
 
-    Returns:
-        {"header": dict, "items": list[dict]}
-        header keys match HEADER_COLS; item keys match ITEM_COLS.
+def _rget(pat, txt, g=1, d=''):
+    m = re.search(pat, txt)
+    return m.group(g).strip() if m else d
+
+
+def _nstr(s):
+    """Join whitespace fragments — fixes pdfplumber splitting numbers like '58897 8' → '588978'."""
+    return ''.join(str(s).split()) if s else ''
+
+
+def _extract_price(raw):
     """
-    with pdfplumber.open(pdf_path) as pdf:
-        full_text = "\n".join(page.extract_text() or "" for page in pdf.pages)
-        raw_tables = []
-        for page in pdf.pages:
-            t = page.extract_table()
-            if t:
-                raw_tables.extend(t)
-
-    header = _parse_header(full_text)
-    line_items = _parse_line_items_from_tables(raw_tables)
-    if not line_items:
-        line_items = _parse_line_items_from_text(full_text)
-
-    return {"header": header, "items": line_items}
-
-
-def _clean_cell(cell) -> str:
-    """Normalize a pdfplumber cell value: collapse embedded newlines to spaces."""
-    if cell is None:
-        return ""
-    return re.sub(r'\s*\n\s*', ' ', str(cell)).strip()
+    Extract unit price float from pdfplumber cell.
+    Raw: 'UCP - Unit Cost Price: 4. 98 INV: 4.9799'
+    pdfplumber may split the number; join all whitespace first,
+    then extract the value after 'CostPrice:'.
+    """
+    joined = ''.join(str(raw).split())
+    m = re.search(r'CostPrice:([\d.]+)', joined)
+    if m:
+        try:
+            return float(m.group(1))
+        except ValueError:
+            pass
+    m = re.search(r'([\d.]+)', joined)
+    try:
+        return float(m.group(1)) if m else None
+    except ValueError:
+        return None
 
 
-def _clean_numeric(cell) -> str:
-    """Normalize a purely numeric cell (SKU, Vendor PN, UPC): strip all whitespace."""
-    return re.sub(r'\s+', '', _clean_cell(cell))
+def _to_float(raw):
+    """Convert raw cell to float, joining whitespace + stripping commas."""
+    s = ''.join(str(raw or '').split()).replace(',', '')
+    try:
+        return float(s)
+    except ValueError:
+        return s
 
 
-def _parse_header(text: str) -> dict:
-    def search(pattern, default=""):
-        m = re.search(pattern, text, re.IGNORECASE)
-        return m.group(1).strip() if m else default
+# ─── main parser ──────────────────────────────────────────────────────────────
 
-    inv_order = re.search(
-        r'INVOICE NUMBER / ORDER NUMBER:\s*([\w]+)\s*/\s*([\w]+)', text, re.IGNORECASE
-    )
-    inv_po = re.search(
-        r'INVOICE DATE / PO DATE:\s*([\d-]+)\s*/\s*([\d-]+)', text, re.IGNORECASE
-    )
+def parse_pdf(filepath: str) -> dict | None:
+    """
+    Parse one 812 invoice PDF.
 
-    # Vendor # may appear on two separate lines: "000873237\n580025"
-    vendor_two = re.search(
-        r'VENDOR NUMBER:\s*\n\s*(\d+)\s*\n\s*(\d+)', text, re.IGNORECASE
-    )
-    if vendor_two:
-        vendor_num = f"{vendor_two.group(1)} / {vendor_two.group(2)}"
+    Returns a dict:
+      invoice_num, order_num, adj_num, adj_date, inv_date, po_date,
+      credit_debit, amount, handling, store, vendor_num, dept,
+      credit_line: {adj_reason, sellers_inv, line_cd, item_total} | None,
+      debit_items: list of 9-field dicts,
+      _file: basename
+
+    Returns None if the PDF cannot be parsed (fewer than 2 tables found).
+    """
+    with pdfplumber.open(filepath) as pdf:
+        tables = pdf.pages[0].extract_tables()
+
+    if len(tables) < 2:
+        return None
+
+    t0, t1 = tables[0], tables[1]
+
+    # ── Sidebar metadata (Table 1) ─────────────────────────────────────────
+    adj_date = _rget(r'(\d{4}-\d{2}-\d{2})', t1[0][0] or '')
+
+    vendor_raw = t1[2][0] or '' if len(t1) > 2 and len(t1[2]) > 0 else ''
+    vm = re.search(r'VENDOR NUMBER:\n?(\w+)\n?(\w+)?', vendor_raw)
+    if vm:
+        v1, v2 = vm.group(1), vm.group(2) or ''
+        vendor_num = f"{v1} / {v2}" if v2 and v2[0].isdigit() else v1
     else:
-        vendor_one = re.search(r'VENDOR NUMBER:\s*(.+)', text, re.IGNORECASE)
-        vendor_num = vendor_one.group(1).strip() if vendor_one else ""
+        vendor_num = ''
 
-    return {
-        "Invoice #":       inv_order.group(1).strip() if inv_order else "",
-        "Order #":         inv_order.group(2).strip() if inv_order else "",
-        "Adjustment #":    search(r'ADJUSTMENT NUMBER:\s*(\S+)'),
-        "Adjustment Date": search(r'ADJUSTMENT DATE:\s*([\d-]+)'),
-        "Invoice Date":    inv_po.group(1).strip() if inv_po else "",
-        "PO Date":         inv_po.group(2).strip() if inv_po else "",
-        "Credit/Debit":    search(r'CREDIT DEBIT:\s*(.+)'),
-        "Total Amount":    search(r'AMOUNT:\s*([\d.]+)'),
-        "Handling":        search(r'HANDLING:\s*(.+)'),
-        "Store #":         search(r'ST - StoreNumber:\s*(\d+)'),
-        "Vendor #":        vendor_num,
-        "Dept #":          search(r'DEPARTMENT NUMBER:\s*(\d+)'),
-    }
+    dept_raw = t1[2][1] or '' if len(t1) > 2 and len(t1[2]) > 1 else ''
+    dept = _rget(r'DEPARTMENT NUMBER:\n?(\d+)', dept_raw)
 
+    # ── Header text blob (Table 0, row 0) ─────────────────────────────────
+    txt = t0[0][0] or ''
+    invoice_num  = _rget(r'INVOICE NUMBER / ORDER NUMBER: (\S+) / \S+', txt)
+    order_num    = _rget(r'INVOICE NUMBER / ORDER NUMBER: \S+ / (\S+)', txt)
+    adj_num      = _rget(r'ADJUSTMENT NUMBER: (\S+)', txt)
+    amount       = _to_float(_rget(r'AMOUNT: ([\d.,]+)', txt).replace(',', ''))
+    handling     = _rget(r'HANDLING: (.+?)(?:\s+UNITS|\n)', txt)
+    credit_debit = _rget(r'CREDIT DEBIT: (.+?)(?:\s+RETURNED|\n)', txt)
+    inv_date     = _rget(r'INVOICE DATE / PO DATE: (\S+) / \S+', txt)
+    po_date      = _rget(r'INVOICE DATE / PO DATE: \S+ / (\S+)', txt)
 
-def _parse_line_items_from_tables(table_rows: list) -> list[dict]:
-    """Extract line items from pdfplumber table data."""
-    if not table_rows:
-        return []
+    # Store number is in a notes row at the bottom of Table 0
+    notes_txt = next((r[0] for r in reversed(t0) if r[0] and 'StoreNumber' in str(r[0])), '') or ''
+    store = _rget(r'StoreNumber: (\d+)', notes_txt)
 
-    header_idx = None
-    for i, row in enumerate(table_rows):
-        if row and any(cell and "SKU" in str(cell).upper() for cell in row):
-            header_idx = i
-            break
-    if header_idx is None:
-        return []
-
-    header_row = table_rows[header_idx]
-
-    def col(row, *keywords):
-        """Return cleaned cell value for the first column whose header contains any keyword."""
-        for kw in keywords:
-            for i, h in enumerate(header_row):
-                if h and kw.upper() in _clean_cell(h).upper():
-                    if i < len(row):
-                        return _clean_cell(row[i])
-        return ""
-
-    items = []
-    for row in table_rows[header_idx + 1:]:
-        if not row:
-            continue
-        if any(cell and "ALLOWANCE" in str(cell).upper() for cell in row):
-            break
-        if all(cell is None or str(cell).strip() == "" for cell in row):
-            continue
-
-        qty_raw = col(row, "QTY")
-        qty, unit = _parse_qty_unit(qty_raw)
-        price_raw = col(row, "UNIT PRICE")
-        unit_price = _parse_ucp(price_raw)
-
-        # Normalize Line C/D: "D -Debit" → "D - Debit" (space around dash)
-        line_cd = col(row, "CREDIT DEBIT")
-        line_cd = re.sub(r'([CD])\s*-\s*', r'\1 - ', line_cd)
-
-        item = {
-            "SKU":           _clean_numeric(col(row, "SKU")),
-            "Vendor PN":     _clean_numeric(col(row, "VENDOR PN")),
-            "UPC/GTIN":      _clean_numeric(col(row, "UPC")),
-            "Sellers Inv #": col(row, "SELLERS INVOICE"),
-            "Line C/D":      line_cd,
-            "QTY":           qty,
-            "Unit":          unit,
-            "Unit Price":    unit_price,
-            "Item Total":    col(row, "ITEM TOTAL"),
-        }
-        items.append(item)
-
-    return items
-
-
-def _parse_line_items_from_text(text: str) -> list[dict]:
-    """Fallback text parser for line items between header row and ALLOWANCE section."""
-    header_pattern = re.search(
-        r'(LINE\s+SKU\s+VENDOR\s+PN.+?)\n(.+?)(?:ALLOWANCE AND CHARGES|$)',
-        text, re.IGNORECASE | re.DOTALL
+    # ── Line items ─────────────────────────────────────────────────────────
+    hdr_idx = next(
+        (i for i, r in enumerate(t0) if r[1] and 'SKU' in str(r[1]).upper()),
+        None
     )
-    if not header_pattern:
-        return []
 
-    item_block = header_pattern.group(2).strip()
-    items = []
-    for line in item_block.splitlines():
-        line = line.strip()
-        if not line:
-            continue
-        cd_match = re.search(r'(D - Debit|C - Credit)', line)
-        total_match = re.search(r'([\d]+\.[\d]{2})\s*$', line)
-        qty_match = re.search(r'CREDIT DEBIT QTY:\s*(\d+)\s+(\w+)', line)
-        ucp_match = re.search(r'UCP:\s*([\d.]+)', line)
-        inv_match = re.search(r'(\d{4})\s+(?:D - Debit|C - Credit)', line)
-        tokens = re.findall(r'\b\d{4,7}\b', line)
+    credit_line = None
+    debit_items = []
 
-        item = {
-            "SKU":           tokens[0] if tokens else "",
-            "Vendor PN":     tokens[1] if len(tokens) > 1 else "",
-            "UPC/GTIN":      "",
-            "Sellers Inv #": inv_match.group(1) if inv_match else "",
-            "Line C/D":      cd_match.group(1) if cd_match else "",
-            "QTY":           qty_match.group(1) if qty_match else "",
-            "Unit":          qty_match.group(2) if qty_match else "",
-            "Unit Price":    ucp_match.group(1) if ucp_match else "",
-            "Item Total":    total_match.group(1) if total_match else "",
-        }
-        items.append(item)
+    if hdr_idx is not None:
+        hdr = t0[hdr_idx]
 
-    return items
+        def find_col(terms):
+            for i, c in enumerate(hdr):
+                if c and any(t.upper() in str(c).replace('\n', ' ').upper() for t in terms):
+                    return i
+            return None
 
+        sellers_col = find_col(['SELLER'])
+        cd_col      = find_col(['CREDIT DEBIT'])
+        qty_col     = find_col(['QTY'])
+        price_col   = find_col(['UNIT PRICE', 'RETAIL PRICE'])
+        total_col   = len(hdr) - 1
+        adj_col     = find_col(['ADJUSTMENT REASON'])
+        sku_col     = find_col(['SKU'])
+        vpn_col     = find_col(['VENDOR PRODUCT', 'VENDOR PN', 'STYLE'])
 
-def _parse_qty_unit(raw: str) -> tuple[str, str]:
-    if not raw:
-        return "", ""
-    m = re.search(r'QTY:\s*(\d+)\s+(\w+)', raw, re.IGNORECASE)
-    if m:
-        return m.group(1), m.group(2)
-    m = re.search(r'(\d+)\s*(\w*)', raw)
-    if m:
-        return m.group(1), m.group(2)
-    return "", ""
+        for row in t0[hdr_idx + 1:]:
+            if row[0] and ('ALLOWANCE' in str(row[0]).upper() or 'NOTES' in str(row[0]).upper()):
+                break
 
+            adj_raw = str(row[adj_col] or '').replace('\n', ' ').strip() if adj_col is not None else ''
+            if not adj_raw:
+                continue
 
-def _parse_ucp(raw: str) -> str:
-    if not raw:
-        return ""
-    # Real PDF format: "UCP - Unit Cost Price: 3. 34" (decimal may be split by newline→space)
-    m = re.search(r'UCP\s*[-–]\s*Unit Cost Price:\s*(\d+\.?\s*\d*)', raw, re.IGNORECASE)
-    if m:
-        return re.sub(r'\s+', '', m.group(1))
-    # Legacy/test format: "UCP: 3.34"
-    m = re.search(r'UCP:\s*([\d.]+)', raw, re.IGNORECASE)
-    if m:
-        return m.group(1)
-    return ""
+            sellers_inv = str(row[sellers_col] or '').replace('\n', ' ').strip() if sellers_col is not None else ''
+            line_cd     = str(row[cd_col] or '').replace('\n', ' ').strip() if cd_col is not None else ''
+            item_total  = _to_float(''.join(str(row[total_col] or '').split()).replace(',', '')) if total_col < len(row) else ''
+
+            if adj_raw == '24':
+                # Rule 1 — credit summary row: only 4 fields, rest blank
+                credit_line = {
+                    'adj_reason': '24',
+                    'sellers_inv': sellers_inv,
+                    'line_cd': line_cd,
+                    'item_total': item_total,
+                }
+            else:
+                # Rule 2 — debit product row
+                sku = _nstr(str(row[sku_col] or '') if sku_col is not None else str(row[1] or ''))
+                if not sku:
+                    continue
+
+                vpn_raw   = row[vpn_col] if vpn_col is not None else (row[2] if len(row) > 2 else '')
+                vendor_pn = _nstr(vpn_raw)
+
+                qty_raw = str(row[qty_col] or '').replace('\n', ' ') if qty_col is not None else ''
+                qty_m   = re.search(r'QTY:\s*(\d+)', qty_raw)
+                qty     = int(qty_m.group(1)) if qty_m else None
+                unit    = 'EA' if qty_m else ''
+
+                price_raw  = str(row[price_col] or '').replace('\n', ' ').strip() if price_col is not None else ''
+                unit_price = _extract_price(price_raw) if price_raw else None
+
+                debit_items.append({
+                    'sku': sku, 'vendor_pn': vendor_pn, 'adj_reason': adj_raw,
+                    'sellers_inv': sellers_inv, 'line_cd': line_cd,
+                    'qty': qty, 'unit': unit, 'unit_price': unit_price, 'item_total': item_total,
+                })
+
+    import os
+    return {
+        'invoice_num': invoice_num, 'order_num': order_num, 'adj_num': adj_num,
+        'adj_date': adj_date, 'inv_date': inv_date, 'po_date': po_date,
+        'credit_debit': credit_debit, 'amount': amount, 'handling': handling,
+        'store': store, 'vendor_num': vendor_num, 'dept': dept,
+        'credit_line': credit_line, 'debit_items': debit_items,
+        '_file': os.path.basename(filepath),
+    }
