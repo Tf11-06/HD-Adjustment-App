@@ -11,6 +11,7 @@ AppId={{A3F2B1C4-8E6D-4A5F-9B2C-1D3E7F0A4B5C}
 AppName={#AppName}
 AppVersion={#AppVersion}
 AppPublisher={#AppPublisher}
+SourceDir=..
 DefaultDirName={autopf}\{#AppName}
 DefaultGroupName={#AppName}
 OutputDir=installer\Output
