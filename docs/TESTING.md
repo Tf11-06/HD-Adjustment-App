@@ -143,6 +143,14 @@ Test these paths before release:
 6. Process one PDF to Excel.
 7. Restart the app and confirm settings persist.
 
+For a client release, confirm the DMG is notarized:
+
+```bash
+spctl -a -vv -t open --context context:primary-signature dist/HDProcessor.dmg
+```
+
+Expected: macOS accepts the DMG without the **Apple could not verify** warning. If Gatekeeper blocks it, the release was not built with Apple Developer signing/notarization secrets.
+
 ## Release Workflow Test
 
 Use `workflow_dispatch` for a manual build, or push a tag:
@@ -169,6 +177,7 @@ Expected:
 - [ ] Batch handling tested.
 - [ ] Windows installer tested.
 - [ ] Mac DMG tested.
+- [ ] Mac DMG notarization verified for client release.
 - [ ] GitHub Release assets verified.
 - [ ] No `service_account.json` committed.
 - [ ] No `config.json` committed.

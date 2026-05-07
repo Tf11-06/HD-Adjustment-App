@@ -8,3 +8,4 @@
 - Updated install, delivery, testing, installer, and release documentation for Windows and Mac.
 - Added a polished Mac DMG layout with drag-to-Applications styling.
 - Added the HD Adjustment Processor logo across the app, README, and installers.
+- Added optional Apple Developer ID signing and notarization for Mac releases.

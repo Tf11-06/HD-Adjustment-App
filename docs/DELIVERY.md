@@ -36,6 +36,25 @@ bash installer/mac_dmg.sh
 
 Windows installers must be built on Windows. Mac DMGs must be built on macOS.
 
+## Mac Gatekeeper Fix
+
+If macOS shows **Apple could not verify "HDProcessor" is free of malware**, the DMG was not notarized by Apple. The reliable client-ready fix is Apple Developer ID signing and notarization.
+
+Add these GitHub Actions secrets before cutting a client Mac release:
+
+| Secret | Value |
+| --- | --- |
+| `APPLE_CERTIFICATE_BASE64` | Base64-encoded `.p12` export of Klear's **Developer ID Application** certificate |
+| `APPLE_CERTIFICATE_PASSWORD` | Password used when exporting the `.p12` certificate |
+| `APPLE_DEVELOPER_ID_APPLICATION` | Full signing identity, for example `Developer ID Application: Klear Concepts (TEAMID)` |
+| `APPLE_ID` | Apple ID email used for notarization |
+| `APPLE_TEAM_ID` | Apple Developer Team ID |
+| `APPLE_APP_SPECIFIC_PASSWORD` | App-specific password for the Apple ID |
+
+After these secrets are configured, push a new version tag. The macOS workflow signs `HDProcessor.app`, builds the DMG, signs the DMG, submits it to Apple's notary service, staples the notarization ticket, and uploads the notarized `HDProcessor.dmg`.
+
+Unsigned internal builds can still be opened with **System Settings -> Privacy & Security -> Open Anyway**, but do not treat that as the final client delivery path.
+
 ## Klear Google Setup
 
 For Google Sheets output, Klear Concepts owns and manages the Google Cloud setup. The client does not create the Cloud project or API credentials.

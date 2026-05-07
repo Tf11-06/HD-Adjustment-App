@@ -33,8 +33,28 @@ jobs:
       - name: Build app bundle
         run: pyinstaller build_mac.spec --noconfirm
 
+      - name: Sign app bundle
+        env:
+          APPLE_CERTIFICATE_BASE64: ${{ secrets.APPLE_CERTIFICATE_BASE64 }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          APPLE_DEVELOPER_ID_APPLICATION: ${{ secrets.APPLE_DEVELOPER_ID_APPLICATION }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
+        run: bash installer/macos_signing.sh sign-app
+
       - name: Package DMG
         run: bash installer/mac_dmg.sh
+
+      - name: Notarize DMG
+        env:
+          APPLE_CERTIFICATE_BASE64: ${{ secrets.APPLE_CERTIFICATE_BASE64 }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          APPLE_DEVELOPER_ID_APPLICATION: ${{ secrets.APPLE_DEVELOPER_ID_APPLICATION }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
+        run: bash installer/macos_signing.sh notarize-dmg
 
       - name: Upload DMG
         uses: actions/upload-artifact@v4
@@ -104,7 +124,9 @@ jobs:
             ### Installation
 
             **Mac:** Download `HDProcessor.dmg`, open it, drag `HDProcessor.app` to Applications.
-            First launch: right-click → Open → Open (one-time Gatekeeper confirmation).
+            If this release was built with Klear's Apple Developer signing credentials, macOS
+            should open it normally. If macOS says Apple cannot verify the app, contact Klear
+            for a notarized build.
 
             **Windows:** Download `HDProcessor-Setup.exe`, double-click, follow the installer.
             If Windows SmartScreen shows a warning: click "More info" → "Run anyway".

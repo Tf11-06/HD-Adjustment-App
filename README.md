@@ -188,7 +188,7 @@ If a PDF has 4 debit line items, the output has 12 invoice columns plus 5 line i
 | `Could not connect to Google Sheets` | Check the internet connection and try again. |
 | PDF cannot be read | Confirm the file is a valid Home Depot 812 adjustment PDF. |
 | Windows security warning | Click **More info**, then **Run anyway**. |
-| Mac cannot open app | Use **System Settings -> Privacy & Security -> Open Anyway**. |
+| Mac says Apple cannot verify the app | Contact Klear Concepts for a notarized build. For internal testing only, use **System Settings -> Privacy & Security -> Open Anyway**. |
 
 ## Developer Notes
 
