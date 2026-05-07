@@ -16,6 +16,7 @@ a = Analysis(
     datas=[
         (ctk_path, 'customtkinter'),
         (tkdnd_path, 'tkinterdnd2'),
+        ('assets/app_logo.png', 'assets'),
         # config.json and service_account.json are NOT bundled.
         # Settings are saved in the user's app config folder.
         # Klear provides service_account.json separately for Google Sheets.
@@ -50,6 +51,7 @@ exe = EXE(
     upx_exclude=[],
     runtime_tmpdir=None,
     console=False,
+    icon='assets/app_icon.ico',
     disable_windowed_traceback=False,
     target_arch=None,
     codesign_identity=None,

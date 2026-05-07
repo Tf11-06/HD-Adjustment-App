@@ -13,6 +13,7 @@ a = Analysis(
     datas=[
         (ctk_path, 'customtkinter'),
         (tkdnd_path, 'tkinterdnd2'),
+        ('assets/app_logo.png', 'assets'),
         # config.json and service_account.json are NOT bundled.
         # Settings are saved in the user's Application Support folder.
         # Klear provides service_account.json separately for Google Sheets.
@@ -64,6 +65,6 @@ coll = COLLECT(
 app = BUNDLE(
     coll,
     name='HDProcessor.app',
-    icon=None,
+    icon='assets/app_icon.icns',
     bundle_identifier='com.klearconcepts.hdprocessor',
 )

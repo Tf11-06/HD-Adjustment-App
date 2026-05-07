@@ -1,5 +1,9 @@
 # HD Adjustment Processor
 
+<p align="center">
+  <img src="assets/app_logo.png" alt="HD Adjustment Processor logo" width="160">
+</p>
+
 **By Klear Concepts - Home Depot Vendor Tool**
 
 HD Adjustment Processor reads Home Depot 812 Credit/Debit Adjustment PDFs and logs each invoice into either Google Sheets or a local Excel workbook. Drop up to 20 PDFs at once; each invoice becomes one row, and line item columns expand automatically.

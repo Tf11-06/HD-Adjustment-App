@@ -4,6 +4,7 @@ Main application entry point.
 """
 
 import os
+import sys
 import threading
 import tkinter as tk
 from tkinter import filedialog
@@ -36,6 +37,12 @@ BORDER      = "#2e3d52"
 SUCCESS     = "#22c55e"
 ERROR_CLR   = "#ef4444"
 WARNING     = "#f59e0b"
+
+
+def _resource_path(relative_path: str) -> str:
+    """Return a path that works from source and PyInstaller bundles."""
+    base = getattr(sys, "_MEIPASS", os.path.dirname(os.path.abspath(__file__)))
+    return os.path.join(base, relative_path)
 
 
 # ── helpers ───────────────────────────────────────────────────────────────────
@@ -249,6 +256,7 @@ class HDProcessorApp(TkinterDnD.Tk):
     def __init__(self):
         super().__init__()
         self.title("HD Adjustment Processor")
+        self._set_window_icon()
         self.geometry("520x480")
         self.resizable(False, False)
         self.configure(bg=BG)
@@ -259,6 +267,13 @@ class HDProcessorApp(TkinterDnD.Tk):
         self._build_ui()
         self.drop_target_register(DND_FILES)
         self.dnd_bind("<<Drop>>", self._on_drop)
+
+    def _set_window_icon(self):
+        try:
+            self._app_icon = tk.PhotoImage(file=_resource_path("assets/app_logo.png"))
+            self.iconphoto(True, self._app_icon)
+        except tk.TclError:
+            pass
 
     # ── UI construction ───────────────────────────────────────────────────
 
