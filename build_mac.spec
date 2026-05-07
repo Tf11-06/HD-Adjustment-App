@@ -14,7 +14,8 @@ a = Analysis(
         (ctk_path, 'customtkinter'),
         (tkdnd_path, 'tkinterdnd2'),
         # config.json and service_account.json are NOT bundled.
-        # They must live in the same folder as HDProcessor.app at runtime.
+        # Settings are saved in the user's Application Support folder.
+        # Klear provides service_account.json separately for Google Sheets.
     ],
     hiddenimports=[
         'tkinterdnd2',

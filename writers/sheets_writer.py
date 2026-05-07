@@ -5,9 +5,9 @@ Adapts the existing gspread logic to the Writer ABC.
 
 import os
 import re
-import sys
 import gspread
 
+import config
 from pdf_parser import HEADER_COLS, LI_COLS
 from .base import Writer
 
@@ -15,12 +15,6 @@ SCOPES = ["https://www.googleapis.com/auth/spreadsheets"]
 
 _N_INV = len(HEADER_COLS)  # 12
 _N_LI  = len(LI_COLS)      # 9
-
-
-def _get_app_dir() -> str:
-    if getattr(sys, 'frozen', False):
-        return os.path.dirname(sys.executable)
-    return os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 
 def _build_header_rows(max_li: int) -> list[list]:
@@ -57,9 +51,7 @@ class SheetsWriter(Writer):
 
     def connect(self) -> None:
         """Authenticate and open the worksheet. Raises on failure."""
-        creds_path = self._config["credentials_file"]
-        if not os.path.isabs(creds_path):
-            creds_path = os.path.join(_get_app_dir(), creds_path)
+        creds_path = config.resolve_credentials_path(self._config.get("credentials_file", ""))
 
         if not os.path.exists(creds_path):
             raise FileNotFoundError(
@@ -94,7 +86,7 @@ class SheetsWriter(Writer):
 
     def is_initialized(self) -> bool:
         self._require_connected()
-        if not self._all_rows:
+        if not self._all_rows or len(self._all_rows) < 2:
             return False
         return bool(self._all_rows[0]) and str(self._all_rows[1][0]) == HEADER_COLS[0]
 

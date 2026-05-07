@@ -30,8 +30,7 @@ Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{
 [Files]
 ; Main executable (PyInstaller one-file or one-folder output)
 Source: "dist\HDProcessor.exe"; DestDir: "{app}"; Flags: ignoreversion
-; NOTE: service_account.json is NOT bundled — user provides it.
-; A placeholder README reminds them to copy it.
+; NOTE: service_account.json is NOT bundled. Klear Concepts provides it separately.
 Source: "README.md"; DestDir: "{app}"; Flags: ignoreversion
 
 [Icons]
@@ -48,6 +47,6 @@ procedure InitializeWizard();
 begin
   WizardForm.WelcomeLabel2.Caption :=
     'This will install HD Adjustment Processor on your computer.'#13#10#13#10 +
-    'After installation, place your service_account.json file in the same folder as HDProcessor.exe, '  +
-    'then launch the app and configure your Google Sheet ID or Excel file path in Settings.';
+    'After installation, launch the app and open Settings. For Google Sheets, paste the Sheet ID ' +
+    'and browse to the Klear-provided service_account.json file. For Excel, choose an .xlsx file path.';
 end;

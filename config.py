@@ -1,5 +1,6 @@
 import json
 import os
+import platform
 import sys
 
 if getattr(sys, 'frozen', False):
@@ -7,7 +8,25 @@ if getattr(sys, 'frozen', False):
 else:
     _APP_DIR = os.path.dirname(os.path.abspath(__file__))
 
-CONFIG_FILE = os.path.join(_APP_DIR, "config.json")
+
+def _config_dir() -> str:
+    system = platform.system()
+    if system == "Windows":
+        base = os.environ.get("APPDATA") or os.path.expanduser("~")
+        return os.path.join(base, "Klear Concepts", "HD Adjustment Processor")
+    if system == "Darwin":
+        return os.path.join(
+            os.path.expanduser("~"),
+            "Library",
+            "Application Support",
+            "Klear Concepts",
+            "HD Adjustment Processor",
+        )
+    base = os.environ.get("XDG_CONFIG_HOME") or os.path.join(os.path.expanduser("~"), ".config")
+    return os.path.join(base, "Klear Concepts", "HD Adjustment Processor")
+
+
+CONFIG_FILE = os.path.join(_config_dir(), "config.json")
 
 _DEFAULTS = {
     "sheet_id": "",
@@ -34,5 +53,20 @@ def load_config() -> dict:
 
 
 def save_config(data: dict) -> None:
+    os.makedirs(os.path.dirname(CONFIG_FILE), exist_ok=True)
     with open(CONFIG_FILE, "w") as f:
         json.dump(data, f, indent=2)
+
+
+def resolve_credentials_path(path: str) -> str:
+    """
+    Resolve the configured credentials file path.
+
+    Browse selections are stored as absolute paths. The default
+    service_account.json remains relative to the app/source directory for
+    development and backwards-compatible manual setups.
+    """
+    path = os.path.expanduser(path or _DEFAULTS["credentials_file"])
+    if os.path.isabs(path):
+        return path
+    return os.path.join(_APP_DIR, path)

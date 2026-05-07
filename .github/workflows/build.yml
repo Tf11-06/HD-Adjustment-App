@@ -22,7 +22,7 @@ jobs:
         run: pip install -r requirements.txt
 
       - name: Run tests
-        run: python3 -m pytest tests/test_pdf_parser.py tests/test_excel_writer.py tests/test_sheets.py tests/test_config.py -q
+        run: python3 -m pytest -q
 
       - name: Build app bundle
         run: pyinstaller build_mac.spec --noconfirm
@@ -51,7 +51,7 @@ jobs:
         run: pip install -r requirements.txt
 
       - name: Run tests
-        run: python -m pytest tests/test_pdf_parser.py tests/test_excel_writer.py tests/test_sheets.py tests/test_config.py -q
+        run: python -m pytest -q
 
       - name: Build exe
         run: pyinstaller build.spec --noconfirm
@@ -102,6 +102,10 @@ jobs:
 
             **Windows:** Download `HDProcessor-Setup.exe`, double-click, follow the installer.
             If Windows SmartScreen shows a warning: click "More info" → "Run anyway".
+
+            **Google Sheets:** Klear Concepts manages the Google Cloud project, Sheets API,
+            and service account. In Settings, paste the Sheet ID and browse to the
+            Klear-provided `service_account.json`.
 
             ### What's included
             - Drag & drop up to 20 HD 812 adjustment PDFs

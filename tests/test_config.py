@@ -42,6 +42,13 @@ def test_save_config_writes_json():
     assert saved["sheet_id"] == "xyz"
 
 
+def test_save_config_creates_config_directory(tmp_path, monkeypatch):
+    nested = tmp_path / "Klear Concepts" / "HD Adjustment Processor" / "config.json"
+    monkeypatch.setattr(config, "CONFIG_FILE", str(nested))
+    config.save_config({"sheet_id": "xyz"})
+    assert nested.exists()
+
+
 def test_save_and_load_roundtrip():
     original = {
         "sheet_id": "sheet999", "credentials_file": "creds.json",
@@ -51,3 +58,13 @@ def test_save_and_load_roundtrip():
     config.save_config(original)
     loaded = config.load_config()
     assert loaded == original
+
+
+def test_resolve_credentials_path_keeps_absolute_path(tmp_path):
+    creds = tmp_path / "service_account.json"
+    assert config.resolve_credentials_path(str(creds)) == str(creds)
+
+
+def test_resolve_credentials_path_defaults_relative_to_app_dir():
+    expected = os.path.join(config._APP_DIR, "service_account.json")
+    assert config.resolve_credentials_path("service_account.json") == expected
