@@ -140,6 +140,7 @@ class SheetsWriter(Writer):
         self._config = config
         self._worksheet: gspread.Worksheet | None = None
         self._all_rows: list | None = None
+        self._formatted_debit_items: int | None = None
 
     # ── connection ────────────────────────────────────────────────────────
 
@@ -193,8 +194,13 @@ class SheetsWriter(Writer):
         formats = [
             {"range": _a1_range(1, 1, 1, _N_INV), "format": _HDR1_INV_FMT},
             {"range": _a1_range(2, 1, 2, _N_INV), "format": _HDR2_INV_FMT},
+            {"range": _a1_range(3, 1, 1000, _N_INV), "format": _DATA_INV_FMT},
             {"range": _a1_range(1, li1_start, 1, li1_start + _N_LI1 - 1), "format": _HDR1_LI1_FMT},
             {"range": _a1_range(2, li1_start, 2, li1_start + _N_LI1 - 1), "format": _HDR2_LI1_FMT},
+            {
+                "range": _a1_range(3, li1_start, 1000, li1_start + _N_LI1 - 1),
+                "format": _DATA_LI1_FMT,
+            },
         ]
 
         self._safe_merge(_a1_range(1, 1, 1, _N_INV))
@@ -206,12 +212,18 @@ class SheetsWriter(Writer):
             formats.extend([
                 {"range": _a1_range(1, start, 1, end), "format": _HDR1_LID_FMT},
                 {"range": _a1_range(2, start, 2, end), "format": _HDR2_LID_FMT},
+                {"range": _a1_range(3, start, 1000, end), "format": _DATA_LID_FMT},
             ])
             self._safe_merge(_a1_range(1, start, 1, end))
 
         self._worksheet.batch_format(formats)
         self._worksheet.freeze(rows=2)
         self._resize_columns(max_debit_items)
+        self._formatted_debit_items = max_debit_items
+
+    def _ensure_formatting(self, max_debit_items: int) -> None:
+        if self._formatted_debit_items is None or max_debit_items > self._formatted_debit_items:
+            self._format_headers(max_debit_items)
 
     def _resize_columns(self, max_debit_items: int) -> None:
         spreadsheet = getattr(self._worksheet, "spreadsheet", None)
@@ -265,25 +277,6 @@ class SheetsWriter(Writer):
         ])
         spreadsheet.batch_update({"requests": requests})
 
-    def _format_data_row(self, row_index: int, max_debit_items: int) -> None:
-        self._require_connected()
-
-        li1_start = _li1_start()
-        formats = [
-            {"range": _a1_range(row_index, 1, row_index, _N_INV), "format": _DATA_INV_FMT},
-            {
-                "range": _a1_range(row_index, li1_start, row_index, li1_start + _N_LI1 - 1),
-                "format": _DATA_LI1_FMT,
-            },
-        ]
-        for debit in range(max_debit_items):
-            start = _debit_start(debit)
-            formats.append({
-                "range": _a1_range(row_index, start, row_index, start + _N_LI - 1),
-                "format": _DATA_LID_FMT,
-            })
-        self._worksheet.batch_format(formats)
-
     # ── Writer interface ─────────────────────────────────────────────────
 
     def is_initialized(self) -> bool:
@@ -329,7 +322,7 @@ class SheetsWriter(Writer):
             self.expand_columns_if_needed(len(invoice.get('debit_items', [])))
 
         current_li = _count_li_groups(self._all_rows)
-        self._format_headers(current_li - 1)
+        self._ensure_formatting(current_li - 1)
 
         # Build flat row
         row = self.invoice_header_row(invoice)
@@ -347,9 +340,7 @@ class SheetsWriter(Writer):
         if used_li < total_li:
             row.extend([''] * (total_li - used_li) * _N_LI)
 
-        next_row = len(self._all_rows) + 1
         self._worksheet.append_rows([row], value_input_option='RAW')
-        self._format_data_row(next_row, current_li - 1)
         self._all_rows.append(row)
 
     # ── convenience ──────────────────────────────────────────────────────

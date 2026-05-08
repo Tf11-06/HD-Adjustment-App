@@ -121,8 +121,11 @@ def test_initialize_headers_applies_formatting():
     formatted_ranges = [item["range"] for item in ws.batch_format.call_args[0][0]]
     assert "A1:K1" in formatted_ranges
     assert "A2:K2" in formatted_ranges
+    assert "A3:K1000" in formatted_ranges
     assert "L1:O1" in formatted_ranges
+    assert "L3:O1000" in formatted_ranges
     assert "P1:X1" in formatted_ranges
+    assert "P3:X1000" in formatted_ranges
     ws.freeze.assert_called_once_with(rows=2)
     ws.merge_cells.assert_any_call("A1:K1")
     ws.merge_cells.assert_any_call("L1:O1")
@@ -177,14 +180,23 @@ def test_append_invoice_calls_append_rows():
     ws.append_rows.assert_called_once()
 
 
-def test_append_invoice_formats_data_row():
+def test_append_invoice_formats_existing_sheet_once():
     header = _build_header_rows(1)
     writer, ws = _make_writer(header)
     writer.append_invoice(_INV_1)
     formatted_ranges = [item["range"] for item in ws.batch_format.call_args[0][0]]
-    assert "A3:K3" in formatted_ranges
-    assert "L3:O3" in formatted_ranges
-    assert "P3:X3" in formatted_ranges
+    assert "A3:K1000" in formatted_ranges
+    assert "L3:O1000" in formatted_ranges
+    assert "P3:X1000" in formatted_ranges
+
+
+def test_append_invoice_does_not_reformat_headers_for_every_row():
+    header = _build_header_rows(1)
+    writer, ws = _make_writer(header)
+    writer.append_invoice(_INV_1)
+    writer.append_invoice(_INV_1)
+    assert ws.batch_format.call_count == 1
+    assert ws.append_rows.call_count == 2
 
 
 def test_append_invoice_row_starts_with_invoice_num():

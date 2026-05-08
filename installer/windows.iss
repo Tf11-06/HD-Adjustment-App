@@ -2,7 +2,7 @@
 ; Produces a single-file installer: HDProcessor-Setup.exe
 
 #define AppName "HD Adjustment Processor"
-#define AppVersion "1.0.6"
+#define AppVersion "1.0.7"
 #define AppPublisher "Klear Concepts"
 #define AppExeName "HDProcessor.exe"
 
