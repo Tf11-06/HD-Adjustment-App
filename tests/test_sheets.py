@@ -46,6 +46,7 @@ _INV_COMPACT = {
 def _make_writer(all_rows=None):
     """Return a connected SheetsWriter with a mocked worksheet."""
     ws = MagicMock(spec=gspread.Worksheet)
+    ws.id = 123
     ws.get_all_values.return_value = all_rows or []
     writer = SheetsWriter({"sheet_id": "x", "credentials_file": "x.json",
                             "worksheet_name": "Adjustments"})
@@ -114,6 +115,20 @@ def test_initialize_headers_calls_update(tmp_path):
     assert written[1][:_N_INV] == list(HEADER_COLS)
 
 
+def test_initialize_headers_applies_formatting():
+    writer, ws = _make_writer([])
+    writer.initialize_headers(1)
+    formatted_ranges = [item["range"] for item in ws.batch_format.call_args[0][0]]
+    assert "A1:K1" in formatted_ranges
+    assert "A2:K2" in formatted_ranges
+    assert "L1:O1" in formatted_ranges
+    assert "P1:X1" in formatted_ranges
+    ws.freeze.assert_called_once_with(rows=2)
+    ws.merge_cells.assert_any_call("A1:K1")
+    ws.merge_cells.assert_any_call("L1:O1")
+    ws.merge_cells.assert_any_call("P1:X1")
+
+
 # ── find_duplicate ────────────────────────────────────────────────────────────
 
 def test_find_duplicate_false_on_empty():
@@ -142,6 +157,7 @@ def test_expand_calls_update_when_needed():
     writer, ws = _make_writer(header)
     writer.expand_columns_if_needed(3)
     ws.update.assert_called_once()
+    assert ws.batch_format.called
     assert _count_li_groups(writer._all_rows) >= 4
 
 
@@ -159,6 +175,16 @@ def test_append_invoice_calls_append_rows():
     writer, ws = _make_writer(header)
     writer.append_invoice(_INV_1)
     ws.append_rows.assert_called_once()
+
+
+def test_append_invoice_formats_data_row():
+    header = _build_header_rows(1)
+    writer, ws = _make_writer(header)
+    writer.append_invoice(_INV_1)
+    formatted_ranges = [item["range"] for item in ws.batch_format.call_args[0][0]]
+    assert "A3:K3" in formatted_ranges
+    assert "L3:O3" in formatted_ranges
+    assert "P3:X3" in formatted_ranges
 
 
 def test_append_invoice_row_starts_with_invoice_num():
