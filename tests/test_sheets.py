@@ -5,10 +5,11 @@ from unittest.mock import MagicMock, patch
 import gspread
 
 from writers.sheets_writer import SheetsWriter, _build_header_rows, _count_li_groups
-from pdf_parser import HEADER_COLS, LI_COLS
+from pdf_parser import HEADER_COLS, LI1_COLS, LI_COLS
 
-_N_INV = len(HEADER_COLS)  # 12
-_N_LI  = len(LI_COLS)      # 9
+_N_INV = len(HEADER_COLS)
+_N_LI1 = len(LI1_COLS)
+_N_LI  = len(LI_COLS)
 
 # ── invoice fixtures ──────────────────────────────────────────────────────────
 
@@ -58,12 +59,19 @@ def _make_writer(all_rows=None):
 def test_build_header_rows_field_names():
     rows = _build_header_rows(0)
     assert rows[1][:_N_INV] == list(HEADER_COLS)
+    assert "Adjustment #" not in rows[1][:_N_INV]
 
 
 def test_build_header_rows_li1_label():
     rows = _build_header_rows(1)
     assert "LINE ITEM 1" in rows[0][_N_INV]
-    assert rows[1][_N_INV:_N_INV + _N_LI] == list(LI_COLS)
+    assert rows[1][_N_INV:_N_INV + _N_LI1] == list(LI1_COLS)
+
+
+def test_build_header_rows_li2_debit_cols():
+    rows = _build_header_rows(1)
+    li2_start = _N_INV + _N_LI1
+    assert rows[1][li2_start:li2_start + _N_LI] == list(LI_COLS)
 
 
 def test_build_header_rows_three_li_groups():
@@ -115,14 +123,14 @@ def test_find_duplicate_false_on_empty():
 
 def test_find_duplicate_true_after_row_exists():
     header = _build_header_rows(1)
-    data_row = ["7573"] + [""] * (_N_INV - 1 + _N_LI * 2)
+    data_row = ["7573"] + [""] * (_N_INV - 1 + _N_LI1 + _N_LI)
     writer, _ = _make_writer(header + [data_row])
     assert writer.find_duplicate("7573")
 
 
 def test_find_duplicate_false_for_different_invoice():
     header = _build_header_rows(1)
-    data_row = ["7573"] + [""] * (_N_INV - 1 + _N_LI * 2)
+    data_row = ["7573"] + [""] * (_N_INV - 1 + _N_LI1 + _N_LI)
     writer, _ = _make_writer(header + [data_row])
     assert not writer.find_duplicate("9999")
 
@@ -167,16 +175,17 @@ def test_rule1_li1_adj_reason_populated():
     writer.append_invoice(_INV_1)
     row = ws.append_rows.call_args[0][0][0]
     li1_start = _N_INV
-    assert row[li1_start + 2] == "24"        # Adj Reason
+    assert row[li1_start] == "24"        # Adj Reason
 
 
-def test_rule1_li1_sku_blank():
+def test_rule1_li1_has_no_sku_vendor_qty_unit_price_columns():
     header = _build_header_rows(1)
     writer, ws = _make_writer(header)
     writer.append_invoice(_INV_1)
     row = ws.append_rows.call_args[0][0][0]
     li1_start = _N_INV
-    assert row[li1_start] == ""              # SKU blank
+    assert row[li1_start:li1_start + _N_LI1] == ["24", "7573", "C - Credit", 278.03]
+    assert row[li1_start + _N_LI1] == "175525"
 
 
 def test_rule3_compact_li1_all_blank():
@@ -185,7 +194,7 @@ def test_rule3_compact_li1_all_blank():
     writer.append_invoice(_INV_COMPACT)
     row = ws.append_rows.call_args[0][0][0]
     li1_start = _N_INV
-    for offset in range(_N_LI):
+    for offset in range(_N_LI1):
         assert row[li1_start + offset] == ""
 
 
@@ -194,7 +203,7 @@ def test_debit_items_start_at_li2():
     writer, ws = _make_writer(header)
     writer.append_invoice(_INV_1)
     row = ws.append_rows.call_args[0][0][0]
-    li2_start = _N_INV + _N_LI
+    li2_start = _N_INV + _N_LI1
     assert row[li2_start] == "175525"        # SKU of first debit item
 
 

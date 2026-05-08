@@ -150,13 +150,12 @@ If an invoice number already exists in the destination, the app asks what to do.
 
 Every PDF produces one spreadsheet row.
 
-Invoice details use the first 12 columns:
+Invoice details use the first 11 columns:
 
 | Field | Description |
 | --- | --- |
 | Invoice # | Vendor invoice number |
 | Order # | Home Depot order number |
-| Adjustment # | Home Depot adjustment document number |
 | Adjustment Date | Adjustment issue date |
 | Invoice Date | Vendor invoice date |
 | PO Date | Purchase order date |
@@ -171,10 +170,10 @@ Line item groups appear to the right:
 
 | Group | Description |
 | --- | --- |
-| `LINE ITEM 1 · Credit` | Credit summary row. Only adjustment reason, seller invoice, credit/debit, and item total are populated. |
+| `LINE ITEM 1 · Credit` | Credit summary row with adjustment reason, seller invoice, credit/debit, and item total. |
 | `LINE ITEM 2+ · Debit` | Product debit rows with SKU, vendor part number, quantity, unit, unit price, and item total. |
 
-If a PDF has 4 debit line items, the output has 12 invoice columns plus 5 line item groups: one credit summary group and four debit groups.
+If a PDF has 4 debit line items, the output has 11 invoice columns plus 1 credit summary group and 4 debit groups.
 
 ## Troubleshooting
 

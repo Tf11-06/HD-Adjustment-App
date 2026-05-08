@@ -8,13 +8,14 @@ import re
 import gspread
 
 import config
-from pdf_parser import HEADER_COLS, LI_COLS
+from pdf_parser import HEADER_COLS, LI1_COLS, LI_COLS
 from .base import Writer
 
 SCOPES = ["https://www.googleapis.com/auth/spreadsheets"]
 
-_N_INV = len(HEADER_COLS)  # 12
-_N_LI  = len(LI_COLS)      # 9
+_N_INV = len(HEADER_COLS)
+_N_LI1 = len(LI1_COLS)
+_N_LI  = len(LI_COLS)
 
 
 def _build_header_rows(max_li: int) -> list[list]:
@@ -22,10 +23,13 @@ def _build_header_rows(max_li: int) -> list[list]:
     row1 = ["Invoice Details"] + [""] * (_N_INV - 1)
     row2 = list(HEADER_COLS)
 
-    # LI1 always present (slot 0 = credit, slots 1..n = debit)
-    for li in range(max_li + 1):
-        label = "LINE ITEM 1 · Credit" if li == 0 else f"LINE ITEM {li + 1} · Debit"
-        row1.append(label)
+    # LI1 is the compact credit summary; LI2+ are full debit item groups.
+    row1.append("LINE ITEM 1 · Credit")
+    row1.extend([""] * (_N_LI1 - 1))
+    row2.extend(LI1_COLS)
+
+    for debit in range(max_li):
+        row1.append(f"LINE ITEM {debit + 2} · Debit")
         row1.extend([""] * (_N_LI - 1))
         row2.extend(LI_COLS)
 

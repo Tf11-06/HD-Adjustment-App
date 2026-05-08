@@ -12,7 +12,7 @@ from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
 from openpyxl.utils import get_column_letter
 
 import config
-from pdf_parser import HEADER_COLS, LI_COLS
+from pdf_parser import HEADER_COLS, LI1_COLS, LI_COLS
 from .base import Writer
 
 # ── fill colors (from the corrected HD_Adjustment_812 template) ───────────────
@@ -31,18 +31,24 @@ _FONT_DATA = Font(name='Calibri', size=10)
 _ALIGN_L   = Alignment(horizontal='left', vertical='center', wrap_text=False)
 _ALIGN_C   = Alignment(horizontal='center', vertical='center')
 
-# 12 invoice columns + 9 per line item group
-_N_INV  = len(HEADER_COLS)   # 12
-_N_LI   = len(LI_COLS)       # 9
+# Invoice columns + compact LI1 credit group + 9 per debit line item group
+_N_INV  = len(HEADER_COLS)
+_N_LI1  = len(LI1_COLS)
+_N_LI   = len(LI_COLS)
 
 # Column widths
-_INV_WIDTHS = [14, 16, 14, 14, 14, 14, 14, 14, 18, 10, 22, 8]
+_INV_WIDTHS = [14, 16, 14, 14, 14, 14, 14, 18, 10, 22, 8]
+_LI1_WIDTHS = [12, 18, 12, 11]
 _LI_WIDTHS  = [12, 10, 18, 12, 12, 7, 7, 11, 11]
 
 
-def _li_start(li_index: int) -> int:
-    """1-based column of the first cell in line-item group li_index (0=LI1, 1=LI2…)."""
-    return _N_INV + 1 + li_index * _N_LI
+def _li1_start() -> int:
+    return _N_INV + 1
+
+
+def _debit_start(debit_index: int) -> int:
+    """1-based column of the first cell in debit group debit_index (0=LI2)."""
+    return _N_INV + _N_LI1 + 1 + debit_index * _N_LI
 
 
 def _write(ws, row: int, col: int, value, fill: PatternFill, font: Font, align: Alignment):
@@ -65,19 +71,29 @@ def _apply_header_row1(ws, max_li: int):
     for col in range(2, _N_INV + 1):
         ws.cell(1, col).fill = _FILL_HDR1_INV
 
-    # LI1 and LI2+
-    for li in range(max_li + 1):
-        s = _li_start(li)
-        label = "LINE ITEM 1 · Credit" if li == 0 else f"LINE ITEM {li + 1} · Debit"
-        fill = _FILL_HDR1_LI1 if li == 0 else _FILL_HDR1_LID
+    # LI1 credit summary
+    s = _li1_start()
+    ws.merge_cells(start_row=1, start_column=s, end_row=1, end_column=s + _N_LI1 - 1)
+    cell = ws.cell(1, s)
+    cell.value = "LINE ITEM 1 · Credit"
+    cell.fill = _FILL_HDR1_LI1
+    cell.font = _FONT_HDR
+    cell.alignment = _ALIGN_C
+    for col in range(s + 1, s + _N_LI1):
+        ws.cell(1, col).fill = _FILL_HDR1_LI1
+
+    # LI2+ debit item groups
+    for debit in range(max_li):
+        s = _debit_start(debit)
+        label = f"LINE ITEM {debit + 2} · Debit"
         ws.merge_cells(start_row=1, start_column=s, end_row=1, end_column=s + _N_LI - 1)
         cell = ws.cell(1, s)
         cell.value = label
-        cell.fill = fill
+        cell.fill = _FILL_HDR1_LID
         cell.font = _FONT_HDR
         cell.alignment = _ALIGN_C
         for col in range(s + 1, s + _N_LI):
-            ws.cell(1, col).fill = fill
+            ws.cell(1, col).fill = _FILL_HDR1_LID
 
 
 def _apply_header_row2(ws, max_li: int):
@@ -85,18 +101,24 @@ def _apply_header_row2(ws, max_li: int):
     for ci, name in enumerate(HEADER_COLS, start=1):
         _write(ws, 2, ci, name, _FILL_HDR2_INV, _FONT_HDR, _ALIGN_L)
 
-    for li in range(max_li + 1):
-        s = _li_start(li)
-        fill = _FILL_HDR2_LI1 if li == 0 else _FILL_HDR2_LID
+    s = _li1_start()
+    for ci, name in enumerate(LI1_COLS, start=0):
+        _write(ws, 2, s + ci, name, _FILL_HDR2_LI1, _FONT_HDR, _ALIGN_L)
+
+    for debit in range(max_li):
+        s = _debit_start(debit)
         for ci, name in enumerate(LI_COLS, start=0):
-            _write(ws, 2, s + ci, name, fill, _FONT_HDR, _ALIGN_L)
+            _write(ws, 2, s + ci, name, _FILL_HDR2_LID, _FONT_HDR, _ALIGN_L)
 
 
 def _set_column_widths(ws, max_li: int):
     for ci, w in enumerate(_INV_WIDTHS, start=1):
         ws.column_dimensions[get_column_letter(ci)].width = w
-    for li in range(max_li + 1):
-        s = _li_start(li)
+    s = _li1_start()
+    for ci, w in enumerate(_LI1_WIDTHS):
+        ws.column_dimensions[get_column_letter(s + ci)].width = w
+    for debit in range(max_li):
+        s = _debit_start(debit)
         for ci, w in enumerate(_LI_WIDTHS):
             ws.column_dimensions[get_column_letter(s + ci)].width = w
 
@@ -105,9 +127,13 @@ def _current_max_li(ws) -> int:
     """Count how many LI groups exist by scanning row-1 merged cell labels."""
     count = 0
     for merged in ws.merged_cells.ranges:
-        if merged.min_row == 1 and merged.min_col > _N_INV:
+        if (
+            merged.min_row == 1
+            and merged.min_col > _N_INV
+            and str(ws.cell(1, merged.min_col).value or "").endswith("· Debit")
+        ):
             count += 1
-    return max(count - 1, 0)  # subtract LI1; min 0
+    return count
 
 
 class ExcelWriter(Writer):
@@ -194,20 +220,20 @@ class ExcelWriter(Writer):
         if next_row < 3:
             next_row = 3
 
-        # Invoice header (cols 1–12)
+        # Invoice header
         inv_cells = self.invoice_header_row(invoice)
         for ci, val in enumerate(inv_cells, start=1):
             _write(self._ws, next_row, ci, val, _FILL_DATA_INV, _FONT_DATA, _ALIGN_L)
 
-        # LI1 — credit summary (cols 13–21)
+        # LI1 — credit summary
         li1_cells = self.li1_row(invoice.get('credit_line'))
-        s = _li_start(0)
+        s = _li1_start()
         for ci, val in enumerate(li1_cells):
             _write(self._ws, next_row, s + ci, val, _FILL_DATA_LI1, _FONT_DATA, _ALIGN_L)
 
         # LI2+ — debit items
         for di, item in enumerate(invoice.get('debit_items', [])):
-            s = _li_start(di + 1)
+            s = _debit_start(di)
             for ci, val in enumerate(self.debit_row(item)):
                 _write(self._ws, next_row, s + ci, val, _FILL_DATA_LID, _FONT_DATA, _ALIGN_L)
 

@@ -4,8 +4,7 @@ Parses Home Depot 812 EDI Credit/Debit Adjustment invoice PDFs.
 
 Rules:
   Rule 1 — LI1 is always the credit summary (adj_reason='24'):
-            only adj_reason, sellers_inv, line_cd, item_total populated.
-            SKU / Vendor PN / QTY / Unit / Unit Price are intentionally BLANK.
+            only adj_reason, sellers_inv, line_cd, item_total are exported.
   Rule 2 — Debit line items (adj_reason='06' / '01 - Pricing Error') go in LI2+.
   Rule 3 — Compact-format invoices have no '24' row: credit_line=None, debits start at LI2.
   Rule 4 — Deduplicate by invoice number (handled by caller).
@@ -17,9 +16,13 @@ import pdfplumber
 
 # Column name constants used by writers
 HEADER_COLS = [
-    "Invoice #", "Order #", "Adjustment #", "Adjustment Date",
+    "Invoice #", "Order #", "Adjustment Date",
     "Invoice Date", "PO Date", "Credit/Debit", "Total Amount",
     "Handling", "Store #", "Vendor #", "Dept #",
+]
+
+LI1_COLS = [
+    "Adj Reason", "Sellers Inv #", "Line C/D", "Item Total",
 ]
 
 LI_COLS = [

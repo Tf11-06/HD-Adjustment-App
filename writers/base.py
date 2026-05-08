@@ -40,15 +40,15 @@ class Writer(ABC):
 
     @staticmethod
     def li1_row(credit_line: dict | None) -> list:
-        """Build the 9-cell LI1 row: only Adj Reason / Sellers Inv # / Line C/D / Item Total."""
+        """Build the 4-cell LI1 credit summary row."""
         if credit_line is None:
-            return [''] * 9
-        row = [''] * 9
-        row[2] = credit_line.get('adj_reason', '')
-        row[3] = credit_line.get('sellers_inv', '')
-        row[4] = credit_line.get('line_cd', '')
-        row[8] = credit_line.get('item_total', '')
-        return row
+            return [''] * 4
+        return [
+            credit_line.get('adj_reason', ''),
+            credit_line.get('sellers_inv', ''),
+            credit_line.get('line_cd', ''),
+            credit_line.get('item_total', ''),
+        ]
 
     @staticmethod
     def debit_row(item: dict) -> list:
@@ -71,7 +71,6 @@ class Writer(ABC):
         return [
             invoice.get('invoice_num', ''),
             invoice.get('order_num', ''),
-            invoice.get('adj_num', ''),
             invoice.get('adj_date', ''),
             invoice.get('inv_date', ''),
             invoice.get('po_date', ''),
