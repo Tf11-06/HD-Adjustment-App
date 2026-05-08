@@ -49,11 +49,14 @@ def load_config() -> dict:
         return _DEFAULTS.copy()
     for key, val in _DEFAULTS.items():
         data.setdefault(key, val)
+    data["excel_file_path"] = normalize_excel_path(data.get("excel_file_path", ""))
     return data
 
 
 def save_config(data: dict) -> None:
     os.makedirs(os.path.dirname(CONFIG_FILE), exist_ok=True)
+    data = data.copy()
+    data["excel_file_path"] = normalize_excel_path(data.get("excel_file_path", ""))
     with open(CONFIG_FILE, "w") as f:
         json.dump(data, f, indent=2)
 
@@ -70,3 +73,16 @@ def resolve_credentials_path(path: str) -> str:
     if os.path.isabs(path):
         return path
     return os.path.join(_APP_DIR, path)
+
+
+def normalize_excel_path(path: str) -> str:
+    """Return an Excel output path with a .xlsx extension."""
+    path = os.path.expanduser((path or "").strip())
+    if not path:
+        return ""
+    root, ext = os.path.splitext(path)
+    if ext.lower() == ".xlsx":
+        return path
+    if ext:
+        return root + ".xlsx"
+    return path + ".xlsx"

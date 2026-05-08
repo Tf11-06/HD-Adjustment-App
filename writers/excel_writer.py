@@ -11,6 +11,7 @@ from openpyxl import load_workbook, Workbook
 from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
 from openpyxl.utils import get_column_letter
 
+import config
 from pdf_parser import HEADER_COLS, LI_COLS
 from .base import Writer
 
@@ -113,7 +114,7 @@ class ExcelWriter(Writer):
     """Appends invoices to a .xlsx file, initializing headers on first use."""
 
     def __init__(self, file_path: str):
-        self._path = file_path
+        self._path = config.normalize_excel_path(file_path)
         self._wb = None
         self._ws = None
 

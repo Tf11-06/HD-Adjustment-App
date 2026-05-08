@@ -236,14 +236,14 @@ class SettingsWindow(tk.Toplevel):
             filetypes=[("Excel Workbook", "*.xlsx"), ("All", "*.*")],
         )
         if p:
-            self._excel_path.set(p)
+            self._excel_path.set(config.normalize_excel_path(p))
 
     def _save(self):
         cfg = config.load_config()
         cfg["sheet_id"]        = self._sheet_id.get().strip()
         cfg["credentials_file"]= self._creds.get().strip()
         cfg["worksheet_name"]  = self._worksheet.get().strip()
-        cfg["excel_file_path"] = self._excel_path.get().strip()
+        cfg["excel_file_path"] = config.normalize_excel_path(self._excel_path.get())
         config.save_config(cfg)
         self._parent.set_status("Settings saved.", SUCCESS)
         self.destroy()
@@ -448,6 +448,8 @@ class HDProcessorApp(TkinterDnD.Tk):
                 self.after(0, lambda: setattr(self, '_processing', False))
                 return
         else:
+            cfg["excel_file_path"] = config.normalize_excel_path(cfg["excel_file_path"])
+            config.save_config(cfg)
             writer = ExcelWriter(cfg["excel_file_path"])
 
         # ── process each PDF ───────────────────────────────────────────────
@@ -479,7 +481,17 @@ class HDProcessorApp(TkinterDnD.Tk):
 
             # Duplicate check
             inv_num = invoice.get('invoice_num', '')
-            if inv_num and writer.find_duplicate(inv_num):
+            try:
+                is_duplicate = bool(inv_num and writer.find_duplicate(inv_num))
+            except Exception as e:
+                err = str(e)
+                self.after(0, lambda e=err: self.set_status(
+                    f"Excel check error: {e}", ERROR_CLR))
+                self.after(0, lambda: self._hide_progress())
+                self.after(0, lambda: setattr(self, '_processing', False))
+                return
+
+            if is_duplicate:
                 if bulk_choice == "add_all":
                     choice = "add"
                 elif bulk_choice == "skip_all":

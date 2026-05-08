@@ -57,6 +57,14 @@ def test_not_initialized_when_file_missing(xlsx_path):
     assert not w.is_initialized()
 
 
+def test_writer_normalizes_extensionless_path(tmp_path):
+    raw_path = tmp_path / "test_output"
+    w = ExcelWriter(str(raw_path))
+    w.initialize_headers(0)
+    assert not raw_path.exists()
+    assert (tmp_path / "test_output.xlsx").exists()
+
+
 def test_initialized_after_initialize_headers(xlsx_path):
     w = ExcelWriter(xlsx_path)
     w.initialize_headers(0)

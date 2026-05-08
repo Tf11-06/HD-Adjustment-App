@@ -60,6 +60,32 @@ def test_save_and_load_roundtrip():
     assert loaded == original
 
 
+def test_normalize_excel_path_adds_xlsx_when_missing(tmp_path):
+    output = tmp_path / "hd test"
+    assert config.normalize_excel_path(str(output)) == str(output) + ".xlsx"
+
+
+def test_normalize_excel_path_replaces_non_xlsx_extension(tmp_path):
+    output = tmp_path / "hd test.xls"
+    assert config.normalize_excel_path(str(output)) == str(tmp_path / "hd test.xlsx")
+
+
+def test_save_config_normalizes_excel_path(tmp_path):
+    output = tmp_path / "hd test"
+    config.save_config({"excel_file_path": str(output)})
+    with open(config.CONFIG_FILE) as f:
+        saved = json.load(f)
+    assert saved["excel_file_path"] == str(output) + ".xlsx"
+
+
+def test_load_config_normalizes_existing_excel_path(tmp_path):
+    output = tmp_path / "hd test"
+    with open(config.CONFIG_FILE, "w") as f:
+        json.dump({"excel_file_path": str(output)}, f)
+    loaded = config.load_config()
+    assert loaded["excel_file_path"] == str(output) + ".xlsx"
+
+
 def test_resolve_credentials_path_keeps_absolute_path(tmp_path):
     creds = tmp_path / "service_account.json"
     assert config.resolve_credentials_path(str(creds)) == str(creds)
