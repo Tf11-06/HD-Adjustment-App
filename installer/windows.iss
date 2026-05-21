@@ -2,7 +2,7 @@
 ; Produces a single-file installer: HDProcessor-Setup.exe
 
 #define AppName "HD Adjustment Processor"
-#define AppVersion "1.1.0"
+#define AppVersion "1.1.1"
 #define AppPublisher "Klear Concepts"
 #define AppExeName "HDProcessor.exe"
 
@@ -21,6 +21,9 @@ UninstallDisplayIcon={app}\{#AppExeName}
 Compression=lzma2/ultra64
 SolidCompression=yes
 WizardStyle=modern
+CloseApplications=yes
+CloseApplicationsFilter=HDProcessor.exe
+RestartApplications=no
 ; Allow install without admin if user prefers their own directory
 PrivilegesRequiredOverridesAllowed=commandline dialog
 

@@ -406,8 +406,6 @@ class HDProcessorApp(TkinterDnD.Tk):
         self._sidebar_summary_color = SUCCESS
         self._load_logo_images()
         self._build_ui()
-        self.drop_target_register(DND_FILES)
-        self.dnd_bind("<<Drop>>", self._on_drop)
 
     def _set_window_icon(self):
         try:
@@ -459,6 +457,20 @@ class HDProcessorApp(TkinterDnD.Tk):
             self._show_history()
         else:
             self._show_home()
+
+        self._register_drop_targets()
+
+    def _register_drop_targets(self):
+        widgets = [self]
+        if hasattr(self, "_drop_frame") and self._drop_frame.winfo_exists():
+            widgets.append(self._drop_frame)
+            widgets.extend(self._drop_frame.winfo_children())
+        for widget in widgets:
+            try:
+                widget.drop_target_register(DND_FILES)
+                widget.dnd_bind("<<Drop>>", self._on_drop)
+            except (tk.TclError, AttributeError):
+                pass
 
     def _build_sidebar(self, parent):
         side = ctk.CTkFrame(
@@ -789,6 +801,8 @@ class HDProcessorApp(TkinterDnD.Tk):
         paths = [p for p in self.tk.splitlist(event.data.strip()) if p.lower().endswith(".pdf")]
         if paths:
             self._process_files(paths[:20])
+        else:
+            self.set_status("No PDF files found in the drop. Use PDF invoices only.", WARNING)
 
     def _open_settings(self):
         SettingsWindow(self)
