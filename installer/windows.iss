@@ -2,7 +2,7 @@
 ; Produces a single-file installer: HDProcessor-Setup.exe
 
 #define AppName "HD Adjustment Processor"
-#define AppVersion "1.1.1"
+#define AppVersion "1.1.2"
 #define AppPublisher "Klear Concepts"
 #define AppExeName "HDProcessor.exe"
 
@@ -12,7 +12,7 @@ AppName={#AppName}
 AppVersion={#AppVersion}
 AppPublisher={#AppPublisher}
 SourceDir=..
-DefaultDirName={autopf}\{#AppName}
+DefaultDirName={localappdata}\Programs\{#AppName}
 DefaultGroupName={#AppName}
 OutputDir=installer\Output
 OutputBaseFilename=HDProcessor-Setup
@@ -24,8 +24,7 @@ WizardStyle=modern
 CloseApplications=yes
 CloseApplicationsFilter=HDProcessor.exe
 RestartApplications=no
-; Allow install without admin if user prefers their own directory
-PrivilegesRequiredOverridesAllowed=commandline dialog
+PrivilegesRequired=lowest
 
 [Languages]
 Name: "english"; MessagesFile: "compiler:Default.isl"

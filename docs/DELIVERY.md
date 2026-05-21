@@ -35,6 +35,7 @@ bash installer/mac_dmg.sh
 ```
 
 Windows installers must be built on Windows. Mac DMGs must be built on macOS.
+The Windows installer is per-user and installs under `%LOCALAPPDATA%/Programs/HD Adjustment Processor` so clients do not need admin access.
 
 ## Mac Gatekeeper Fix
 
@@ -140,3 +141,4 @@ Settings are saved under the user's profile:
 | `Could not find the Google Sheet` | Wrong Sheet ID or missing share permission | Confirm Sheet ID and Editor access for the service account. |
 | `Could not connect to Google Sheets` | Network or Google API issue | Check internet, API status, and retry. |
 | `Could not read <file>` | Not a valid supported PDF | Test with a real Home Depot 812 adjustment PDF. |
+| `Could not save the Excel workbook` | Workbook is open or locked by Excel/Windows | Close Excel and run the PDFs again. |

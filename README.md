@@ -39,7 +39,7 @@ Excel output does not need a Google account or credentials file.
 1. Download `HDProcessor-Setup.exe`.
 2. Double-click the installer.
 3. If Windows shows **Windows protected your PC**, click **More info**, then **Run anyway**.
-4. Finish the installer.
+4. Finish the installer. The app installs for the current Windows user.
 5. Open **HD Adjustment Processor** from the Start Menu.
 
 ### Mac
@@ -186,6 +186,7 @@ If a PDF has 4 debit line items, the output has 11 invoice columns plus 1 credit
 | `Could not find the Google Sheet` | Check the Sheet ID and confirm the sheet was shared with Klear's service account as Editor. |
 | `Could not connect to Google Sheets` | Check the internet connection and try again. |
 | PDF cannot be read | Confirm the file is a valid Home Depot 812 adjustment PDF. |
+| Excel write error or nothing appears | Close the workbook in Excel, then run the PDFs again. Windows can block saves while the workbook is open. |
 | Windows security warning | Click **More info**, then **Run anyway**. |
 | Mac says Apple cannot verify the app | Contact Klear Concepts for a notarized build. For internal testing only, use **System Settings -> Privacy & Security -> Open Anyway**. |
 

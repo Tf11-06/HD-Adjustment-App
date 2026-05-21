@@ -156,7 +156,15 @@ class ExcelWriter(Writer):
             self._ws.title = "Adjustments"
 
     def _save(self):
-        self._wb.save(self._path)
+        parent = os.path.dirname(os.path.abspath(self._path))
+        if parent:
+            os.makedirs(parent, exist_ok=True)
+        try:
+            self._wb.save(self._path)
+        except PermissionError as exc:
+            raise PermissionError(
+                "Could not save the Excel workbook. Close it in Excel and try again."
+            ) from exc
 
     def is_initialized(self) -> bool:
         if not os.path.exists(self._path):

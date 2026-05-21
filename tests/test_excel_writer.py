@@ -65,6 +65,13 @@ def test_writer_normalizes_extensionless_path(tmp_path):
     assert (tmp_path / "test_output.xlsx").exists()
 
 
+def test_writer_creates_parent_directory(tmp_path):
+    output = tmp_path / "new-folder" / "test_output.xlsx"
+    w = ExcelWriter(str(output))
+    w.initialize_headers(0)
+    assert output.exists()
+
+
 def test_initialized_after_initialize_headers(xlsx_path):
     w = ExcelWriter(xlsx_path)
     w.initialize_headers(0)
