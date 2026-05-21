@@ -18,6 +18,8 @@ import config
 import pdf_parser as parser
 from writers import ExcelWriter, SheetsWriter
 
+APP_VERSION = "1.1.3"
+
 ctk.set_appearance_mode("light")
 ctk.set_default_color_theme("blue")
 
@@ -392,7 +394,7 @@ class HDProcessorApp(TkinterDnD.Tk):
         self._set_window_icon()
         self.geometry("1180x780")
         self.minsize(980, 680)
-        self.resizable(False, False)
+        self.resizable(True, True)
         self.configure(bg=BG)
 
         cfg = config.load_config()
@@ -437,12 +439,12 @@ class HDProcessorApp(TkinterDnD.Tk):
 
         shell = ctk.CTkFrame(
             self,
-            corner_radius=22,
-            border_width=1,
+            corner_radius=0,
+            border_width=0,
             fg_color=_theme("shell"),
             border_color=BORDER,
         )
-        shell.pack(fill="both", expand=True, padx=34, pady=34)
+        shell.pack(fill="both", expand=True)
         shell.grid_columnconfigure(0, minsize=285)
         shell.grid_columnconfigure(1, weight=1)
         shell.grid_rowconfigure(0, weight=1)
@@ -476,20 +478,14 @@ class HDProcessorApp(TkinterDnD.Tk):
         side = ctk.CTkFrame(
             parent,
             fg_color=_theme("sidebar"),
-            corner_radius=22,
+            corner_radius=0,
             border_width=0,
         )
         side.grid(row=0, column=0, sticky="nsew")
         side.grid_rowconfigure(5, weight=1)
 
-        if platform.system() == "Darwin":
-            lights = ctk.CTkFrame(side, fg_color="transparent")
-            lights.grid(row=0, column=0, sticky="w", padx=24, pady=(22, 0))
-            for color in ("#ff5f57", "#ffbd2e", "#28c840"):
-                ctk.CTkLabel(lights, text="●", text_color=color, font=(_FONT, 18)).pack(side="left", padx=(0, 8))
-
         brand = ctk.CTkFrame(side, fg_color="transparent")
-        brand.grid(row=1, column=0, sticky="ew", padx=24, pady=(40, 24))
+        brand.grid(row=1, column=0, sticky="ew", padx=24, pady=(34, 24))
         if self._logo_sidebar:
             tk.Label(brand, image=self._logo_sidebar, bg=_theme("sidebar"), bd=0).pack(side="left", padx=(0, 16))
         else:
@@ -554,6 +550,12 @@ class HDProcessorApp(TkinterDnD.Tk):
             justify="left",
         )
         self._sidebar_last_label.grid(row=2, column=0, columnspan=2, padx=18, pady=(2, 12), sticky="w")
+        ctk.CTkLabel(
+            side,
+            text=f"Version {APP_VERSION}",
+            text_color=TEXT_MUTED,
+            font=(_FONT, 11),
+        ).grid(row=7, column=0, sticky="w", padx=24, pady=(0, 18))
 
     def _nav_button(self, parent, icon, text, view, row):
         selected = self._view == view
