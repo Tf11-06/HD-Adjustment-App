@@ -15,7 +15,10 @@ Download the latest installer from the [Releases page](../../releases/latest).
 | Computer | Download |
 | --- | --- |
 | Windows | `HDProcessor-Setup.exe` |
-| Mac | `HDProcessor.dmg` |
+| Mac with Intel chip | `HDProcessor-Intel.dmg` |
+| Mac with Apple Silicon chip | `HDProcessor-AppleSilicon.dmg` |
+
+If you are unsure which Mac you have, open **Apple menu -> About This Mac** and check the chip or processor line.
 
 Klear Concepts provides Google Sheets access through Klear's Google Cloud project, Google Sheets API setup, and service account credentials. The client does not need to create a Google Cloud project.
 
@@ -44,7 +47,9 @@ Excel output does not need a Google account or credentials file.
 
 ### Mac
 
-1. Download `HDProcessor.dmg`.
+1. Download the correct Mac installer:
+   - Intel Mac: `HDProcessor-Intel.dmg`
+   - Apple Silicon Mac: `HDProcessor-AppleSilicon.dmg`
 2. Open the DMG.
 3. Drag **HDProcessor** into **Applications**.
 4. On first launch, macOS may block the app because it is not from the App Store. Open **System Settings -> Privacy & Security**, then choose **Open Anyway**.

@@ -5,8 +5,8 @@
 set -e
 
 APP="dist/HDProcessor.app"
-DMG="dist/HDProcessor.dmg"
-RW_DMG="dist/HDProcessor-rw.dmg"
+DMG="${DMG_PATH:-dist/HDProcessor.dmg}"
+RW_DMG="${RW_DMG_PATH:-${DMG%.dmg}-rw.dmg}"
 VOL="HD Adjustment Processor"
 TMP_DIR=$(mktemp -d)
 MOUNT_DIR=$(mktemp -d)

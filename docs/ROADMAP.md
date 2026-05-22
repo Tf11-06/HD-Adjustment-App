@@ -7,7 +7,7 @@ This is the working client-readiness plan for the next polish passes.
 - Fill the native desktop window cleanly.
 - Remove mock window controls from the in-app sidebar.
 - Show the app version in the UI for support.
-- Keep Windows and Mac installers aligned with the same behavior.
+- Keep Windows, Intel Mac, and Apple Silicon Mac installers aligned with the same behavior.
 
 ## v1.2 Client Support
 
@@ -22,4 +22,4 @@ This is the working client-readiness plan for the next polish passes.
 - Sign the Windows installer to reduce SmartScreen warnings.
 - Sign and notarize the Mac DMG to remove Gatekeeper warnings.
 - Keep `service_account.json` and local `config.json` out of GitHub.
-- Confirm each tagged release contains `HDProcessor-Setup.exe` and `HDProcessor.dmg`.
+- Confirm each tagged release contains `HDProcessor-Setup.exe`, `HDProcessor-Intel.dmg`, and `HDProcessor-AppleSilicon.dmg`.

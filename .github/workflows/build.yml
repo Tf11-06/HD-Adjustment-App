@@ -10,9 +10,9 @@ permissions:
   contents: write
 
 jobs:
-  # ── macOS DMG ──────────────────────────────────────────────────────────────
-  build-mac:
-    runs-on: macos-latest
+  # ── macOS Intel DMG ────────────────────────────────────────────────────────
+  build-mac-intel:
+    runs-on: macos-15-intel
     steps:
       - uses: actions/checkout@v4
 
@@ -33,6 +33,11 @@ jobs:
       - name: Build app bundle
         run: pyinstaller build_mac.spec --noconfirm
 
+      - name: Verify Intel macOS build
+        run: |
+          file dist/HDProcessor.app/Contents/MacOS/HDProcessor
+          lipo -archs dist/HDProcessor.app/Contents/MacOS/HDProcessor | grep -q x86_64
+
       - name: Sign app bundle
         env:
           APPLE_CERTIFICATE_BASE64: ${{ secrets.APPLE_CERTIFICATE_BASE64 }}
@@ -44,10 +49,13 @@ jobs:
         run: bash installer/macos_signing.sh sign-app
 
       - name: Package DMG
+        env:
+          DMG_PATH: dist/HDProcessor-Intel.dmg
         run: bash installer/mac_dmg.sh
 
       - name: Notarize DMG
         env:
+          DMG_PATH: dist/HDProcessor-Intel.dmg
           APPLE_CERTIFICATE_BASE64: ${{ secrets.APPLE_CERTIFICATE_BASE64 }}
           APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
           APPLE_DEVELOPER_ID_APPLICATION: ${{ secrets.APPLE_DEVELOPER_ID_APPLICATION }}
@@ -59,8 +67,68 @@ jobs:
       - name: Upload DMG
         uses: actions/upload-artifact@v4
         with:
-          name: HDProcessor-mac
-          path: dist/HDProcessor.dmg
+          name: HDProcessor-mac-intel
+          path: dist/HDProcessor-Intel.dmg
+
+  # ── macOS Apple Silicon DMG ────────────────────────────────────────────────
+  build-mac-apple-silicon:
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Install DMG builder
+        run: pip install dmgbuild
+
+      - name: Run tests
+        run: python3 -m pytest -q
+
+      - name: Build app bundle
+        run: pyinstaller build_mac.spec --noconfirm
+
+      - name: Verify Apple Silicon macOS build
+        run: |
+          file dist/HDProcessor.app/Contents/MacOS/HDProcessor
+          lipo -archs dist/HDProcessor.app/Contents/MacOS/HDProcessor | grep -q arm64
+
+      - name: Sign app bundle
+        env:
+          APPLE_CERTIFICATE_BASE64: ${{ secrets.APPLE_CERTIFICATE_BASE64 }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          APPLE_DEVELOPER_ID_APPLICATION: ${{ secrets.APPLE_DEVELOPER_ID_APPLICATION }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
+        run: bash installer/macos_signing.sh sign-app
+
+      - name: Package DMG
+        env:
+          DMG_PATH: dist/HDProcessor-AppleSilicon.dmg
+        run: bash installer/mac_dmg.sh
+
+      - name: Notarize DMG
+        env:
+          DMG_PATH: dist/HDProcessor-AppleSilicon.dmg
+          APPLE_CERTIFICATE_BASE64: ${{ secrets.APPLE_CERTIFICATE_BASE64 }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          APPLE_DEVELOPER_ID_APPLICATION: ${{ secrets.APPLE_DEVELOPER_ID_APPLICATION }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
+        run: bash installer/macos_signing.sh notarize-dmg
+
+      - name: Upload DMG
+        uses: actions/upload-artifact@v4
+        with:
+          name: HDProcessor-mac-apple-silicon
+          path: dist/HDProcessor-AppleSilicon.dmg
 
   # ── Windows EXE installer ──────────────────────────────────────────────────
   build-windows:
@@ -96,14 +164,20 @@ jobs:
 
   # ── Create GitHub Release ──────────────────────────────────────────────────
   release:
-    needs: [build-mac, build-windows]
+    needs: [build-mac-intel, build-mac-apple-silicon, build-windows]
     runs-on: ubuntu-latest
     if: startsWith(github.ref, 'refs/tags/')
     steps:
-      - name: Download Mac artifact
+      - name: Download Mac Intel artifact
         uses: actions/download-artifact@v4
         with:
-          name: HDProcessor-mac
+          name: HDProcessor-mac-intel
+          path: artifacts/
+
+      - name: Download Mac Apple Silicon artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: HDProcessor-mac-apple-silicon
           path: artifacts/
 
       - name: Download Windows artifact
@@ -116,14 +190,16 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           files: |
-            artifacts/HDProcessor.dmg
+            artifacts/HDProcessor-Intel.dmg
+            artifacts/HDProcessor-AppleSilicon.dmg
             artifacts/HDProcessor-Setup.exe
           body: |
             ## HD Adjustment Processor ${{ github.ref_name }}
 
             ### Installation
 
-            **Mac:** Download `HDProcessor.dmg`, open it, drag `HDProcessor.app` to Applications.
+            **Mac Intel:** Download `HDProcessor-Intel.dmg`, open it, drag `HDProcessor.app` to Applications.
+            **Mac Apple Silicon:** Download `HDProcessor-AppleSilicon.dmg`, open it, drag `HDProcessor.app` to Applications.
             If this release was built with Klear's Apple Developer signing credentials, macOS
             should open it normally. If macOS says Apple cannot verify the app, contact Klear
             for a notarized build.

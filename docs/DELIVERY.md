@@ -21,7 +21,8 @@ Use GitHub Releases as the official client download location.
 
 3. GitHub Actions builds and attaches:
    - `HDProcessor-Setup.exe`
-   - `HDProcessor.dmg`
+   - `HDProcessor-Intel.dmg`
+   - `HDProcessor-AppleSilicon.dmg`
 
 4. Open the Release in GitHub and confirm both assets are present before sending the link.
 
@@ -36,6 +37,7 @@ bash installer/mac_dmg.sh
 
 Windows installers must be built on Windows. Mac DMGs must be built on macOS.
 The Windows installer is per-user and installs under `%LOCALAPPDATA%/Programs/HD Adjustment Processor` so clients do not need admin access.
+The released Mac assets are separate native builds: `HDProcessor-Intel.dmg` for Intel Macs and `HDProcessor-AppleSilicon.dmg` for Apple Silicon Macs.
 
 ## Mac Gatekeeper Fix
 
@@ -97,7 +99,8 @@ Do not send or include `config.json`. The app creates it after the user saves Se
 
 1. Download the correct release asset:
    - Windows: `HDProcessor-Setup.exe`
-   - Mac: `HDProcessor.dmg`
+   - Intel Mac: `HDProcessor-Intel.dmg`
+   - Apple Silicon Mac: `HDProcessor-AppleSilicon.dmg`
 2. Install the app.
 3. Open **Settings**.
 4. Paste the Sheet ID.
@@ -120,7 +123,10 @@ Settings are saved under the user's profile:
 - [ ] Full test suite passes locally.
 - [ ] GitHub Actions build succeeds.
 - [ ] Release contains `HDProcessor-Setup.exe`.
-- [ ] Release contains `HDProcessor.dmg`.
+- [ ] Release contains `HDProcessor-Intel.dmg`.
+- [ ] Release contains `HDProcessor-AppleSilicon.dmg`.
+- [ ] Intel Mac workflow log confirms the app binary includes `x86_64`.
+- [ ] Apple Silicon Mac workflow log confirms the app binary includes `arm64`.
 - [ ] Klear service account is active.
 - [ ] Target Google Sheet is shared with the service account as Editor.
 - [ ] Sheet ID has been copied accurately.

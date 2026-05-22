@@ -12,3 +12,4 @@
 - Updated the Windows installer to install per-user and avoid Program Files permission issues.
 - Added a clearer Excel workbook locked/open error for Windows users.
 - Polished the v1.1 UI so the app fills the native window, removed mock traffic-light controls, and added an in-app version label.
+- Split Mac releases into native Intel and Apple Silicon DMGs with CI architecture checks.

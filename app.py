@@ -18,7 +18,7 @@ import config
 import pdf_parser as parser
 from writers import ExcelWriter, SheetsWriter
 
-APP_VERSION = "1.1.3"
+APP_VERSION = "1.1.4"
 
 ctk.set_appearance_mode("light")
 ctk.set_default_color_theme("blue")

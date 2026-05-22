@@ -7,7 +7,7 @@ set -euo pipefail
 
 MODE="${1:-}"
 APP="dist/HDProcessor.app"
-DMG="dist/HDProcessor.dmg"
+DMG="${DMG_PATH:-dist/HDProcessor.dmg}"
 ENTITLEMENTS="installer/macos_entitlements.plist"
 KEYCHAIN_PATH="${RUNNER_TEMP:-/tmp}/hdprocessor-signing.keychain-db"
 KEYCHAIN_PASSWORD="${KEYCHAIN_PASSWORD:-$(uuidgen)}"
