@@ -73,6 +73,38 @@ def _to_float(raw):
         return s
 
 
+def _clean_cell(raw):
+    """Normalize pdfplumber cell text while preserving word boundaries."""
+    return str(raw or '').replace('\n', ' ').strip()
+
+
+def _returned_goods_value(txt, tables):
+    """Extract the Returned Goods value from RM invoices."""
+    ignored_values = {'UNITS', 'SHIPPED', 'RETURNED'}
+    for table in tables:
+        for row in table:
+            for cell in row:
+                cell_txt = str(cell or '')
+                if 'RETURNED GOODS' not in cell_txt.upper():
+                    continue
+                m = re.search(r'RETURNED GOODS:\s*([A-Za-z0-9-]+)', cell_txt, re.I)
+                if m and m.group(1).strip().upper() not in ignored_values:
+                    return m.group(1).strip()
+
+    # Header text can collapse the RM row into:
+    # "RETURNED GOODS: UNITS SHIPPED RETURNED:\nCREDIT DEBIT: D - Debit 10394 0 CT"
+    m = re.search(
+        r'CREDIT DEBIT:\s*D\s*-\s*Debit\s+([A-Za-z0-9-]+)\s+\d+\s+\w+',
+        txt,
+        re.I,
+    )
+    if m:
+        return m.group(1).strip()
+
+    m = re.search(r'RETURNED GOODS:\s*([A-Za-z0-9-]+)', txt, re.I)
+    return m.group(1).strip() if m else ''
+
+
 # ─── main parser ──────────────────────────────────────────────────────────────
 
 def parse_pdf(filepath: str) -> dict | None:
@@ -112,6 +144,7 @@ def parse_pdf(filepath: str) -> dict | None:
 
     # ── Header text blob (Table 0, row 0) ─────────────────────────────────
     txt = t0[0][0] or ''
+    is_rm_invoice = 'RETURNED GOODS:' in txt.upper()
     invoice_num  = _rget(r'INVOICE NUMBER / ORDER NUMBER: (\S+) / \S+', txt)
     order_num    = _rget(r'INVOICE NUMBER / ORDER NUMBER: \S+ / (\S+)', txt)
     adj_num      = _rget(r'ADJUSTMENT NUMBER: (\S+)', txt)
@@ -120,6 +153,20 @@ def parse_pdf(filepath: str) -> dict | None:
     credit_debit = _rget(r'CREDIT DEBIT: (.+?)(?:\s+RETURNED|\n)', txt)
     inv_date     = _rget(r'INVOICE DATE / PO DATE: (\S+) / \S+', txt)
     po_date      = _rget(r'INVOICE DATE / PO DATE: \S+ / (\S+)', txt)
+
+    if is_rm_invoice:
+        invoice_num = adj_num
+        order_num = ''
+        inv_date = ''
+        po_date = ''
+        handling = _rget(r'HANDLING: (.+?)(?:\s+RETURNED GOODS:|\n)', txt)
+        credit_debit = _rget(r'CREDIT DEBIT: (.+?)(?:\s+\d+\s+\d+\s+\w+|\n)', txt)
+
+        # RM PDFs can place the adjustment date on the line after the label.
+        if not adj_date:
+            adj_date = _rget(r'ADJUSTMENT DATE:\s*(?:\n|\s)+(\d{4}-\d{2}-\d{2})', txt)
+
+    rm_sellers_inv = _returned_goods_value(txt, (t0, t1)) if is_rm_invoice else ''
 
     # Store number is in a notes row at the bottom of Table 0
     notes_txt = next((r[0] for r in reversed(t0) if r[0] and 'StoreNumber' in str(r[0])), '') or ''
@@ -156,12 +203,15 @@ def parse_pdf(filepath: str) -> dict | None:
             if row[0] and ('ALLOWANCE' in str(row[0]).upper() or 'NOTES' in str(row[0]).upper()):
                 break
 
-            adj_raw = str(row[adj_col] or '').replace('\n', ' ').strip() if adj_col is not None else ''
+            adj_raw = _clean_cell(row[adj_col]) if adj_col is not None else ''
             if not adj_raw:
                 continue
 
-            sellers_inv = str(row[sellers_col] or '').replace('\n', ' ').strip() if sellers_col is not None else ''
-            line_cd     = str(row[cd_col] or '').replace('\n', ' ').strip() if cd_col is not None else ''
+            sellers_inv = _clean_cell(row[sellers_col]) if sellers_col is not None else ''
+            if is_rm_invoice and adj_raw.upper() == 'RM':
+                sellers_inv = rm_sellers_inv
+
+            line_cd     = _clean_cell(row[cd_col]) if cd_col is not None else ''
             item_total  = _to_float(''.join(str(row[total_col] or '').split()).replace(',', '')) if total_col < len(row) else ''
 
             if adj_raw == '24':
@@ -186,8 +236,10 @@ def parse_pdf(filepath: str) -> dict | None:
                 qty     = int(qty_m.group(1)) if qty_m else None
                 unit    = 'EA' if qty_m else ''
 
-                price_raw  = str(row[price_col] or '').replace('\n', ' ').strip() if price_col is not None else ''
+                price_raw  = _clean_cell(row[price_col]) if price_col is not None else ''
                 unit_price = _extract_price(price_raw) if price_raw else None
+                if is_rm_invoice and item_total == '' and unit_price is not None and qty is not None:
+                    item_total = round(qty * unit_price, 2)
 
                 debit_items.append({
                     'sku': sku, 'vendor_pn': vendor_pn, 'adj_reason': adj_raw,

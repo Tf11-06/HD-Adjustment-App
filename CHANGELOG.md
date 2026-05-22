@@ -13,3 +13,4 @@
 - Added a clearer Excel workbook locked/open error for Windows users.
 - Polished the v1.1 UI so the app fills the native window, removed mock traffic-light controls, and added an in-app version label.
 - Split Mac releases into native Intel and Apple Silicon DMGs with CI architecture checks.
+- Fixed RM returned-goods invoice parsing so adjustment numbers deduplicate correctly and RM lines export into LI2+.

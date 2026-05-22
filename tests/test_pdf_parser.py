@@ -260,3 +260,69 @@ def test_compact_format_debit_items_still_parsed():
         r = parser.parse_pdf("fake.pdf")
     assert len(r["debit_items"]) == 1
     assert r["debit_items"][0]["sku"] == "175525"
+
+
+# ── RM returned-goods format ──────────────────────────────────────────────────
+
+_T0_RM = [
+    [
+        "Credit/Debit Adjustment\n"
+        "ADJUSTMENT DATE:\n"
+        "2026-02-17\n"
+        "ADJUSTMENT NUMBER: 068445608 000873237 27\n"
+        "AMOUNT: 3.44\n"
+        "HANDLING: O - Deduct from Next Remittance RETURNED GOODS: UNITS SHIPPED RETURNED:\n"
+        "CREDIT DEBIT: D - Debit 684403182026 0 CT\n"
+        "INVOICE NUMBER / ORDER NUMBER: 0000000000\n"
+        "INVOICE DATE / PO DATE:\n",
+        None, None, None,
+    ],
+    ["LINE", "SKU", "VENDOR PN", None, "UPC GTIN", "ADJUSTMENT REASON",
+     "DESCRIPTION", "SELLERS INVOICE #", "CREDIT DEBIT", "QTY",
+     "UNIT PRICE", "UNIT DIFF", "ITEM TOTAL"],
+    [None, "2739\n60", "90069\n1", None, None, "RM", "Returned item", "00000000\n00",
+     "D -\nDebit", "CREDIT DEBIT QTY: 1\nEA - Each",
+     "UCP - Unit Cost\nPrice: 3.44\nICL: 3.44", None, ""],
+    ["NOTES/COMMENTS/SPECIAL INSTRUCTIONS:\nST - StoreNumber: 6838", None, None, None,
+     None, None, None, None, None, None, None, None, None],
+]
+
+_T1_RM = [
+    ["ADJUSTMENT DATE:\n2026-02-17", "SHIPPED DATE:"],
+    ["CHECK DATE :", "CHECK NUMBER:"],
+    ["VENDOR NUMBER:\n000873237", "DEPARTMENT NUMBER:\n27"],
+    ["RETURNED GOODS:\n684403182026", "UNITS SHIPPED RETURNED:\n0 CT"],
+]
+
+_TABLES_RM = [_T0_RM, _T1_RM]
+
+
+def test_rm_invoice_uses_adjustment_number_as_invoice_num():
+    with patch("pdf_parser.pdfplumber.open", return_value=_make_pdf(_TABLES_RM)):
+        r = parser.parse_pdf("068445608.pdf")
+    assert r["invoice_num"] == "068445608"
+    assert r["order_num"] == ""
+    assert r["inv_date"] == ""
+    assert r["po_date"] == ""
+
+
+def test_rm_invoice_leaves_li1_blank_and_puts_item_in_debits():
+    with patch("pdf_parser.pdfplumber.open", return_value=_make_pdf(_TABLES_RM)):
+        r = parser.parse_pdf("068445608.pdf")
+    assert r["credit_line"] is None
+    assert len(r["debit_items"]) == 1
+
+
+def test_rm_invoice_item_fields():
+    with patch("pdf_parser.pdfplumber.open", return_value=_make_pdf(_TABLES_RM)):
+        r = parser.parse_pdf("068445608.pdf")
+    item = r["debit_items"][0]
+    assert item["sku"] == "273960"
+    assert item["vendor_pn"] == "900691"
+    assert item["adj_reason"] == "RM"
+    assert item["sellers_inv"] == "684403182026"
+    assert item["line_cd"] == "D - Debit"
+    assert item["qty"] == 1
+    assert item["unit"] == "EA"
+    assert item["unit_price"] == pytest.approx(3.44)
+    assert item["item_total"] == pytest.approx(3.44)
