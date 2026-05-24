@@ -1,6 +1,6 @@
 # HD Adjustment Processor - Testing Guide
 
-Use this guide before shipping a client release.
+Use this guide before shipping a Klear Concepts release.
 
 ## Local Setup
 
@@ -42,10 +42,10 @@ Save Settings and confirm `config.json` is created in the user config folder, no
 Use Klear Concepts' Google Cloud project, Sheets API, and service account credentials.
 
 1. Create a blank Google Sheet.
-2. Share it with the `client_email` from Klear's `service_account.json` as **Editor**.
+2. Share it with the `client_email` from `service_account.json` as **Editor**.
 3. Open the app.
 4. In Settings, paste the Sheet ID.
-5. Browse to the Klear-provided `service_account.json`.
+5. Browse to the `service_account.json` file.
 6. Save Settings.
 7. Select **Google Sheets**.
 8. Drop one real Home Depot 812 PDF.
@@ -128,25 +128,28 @@ Test these paths before release:
 1. Build or download `HDProcessor-Setup.exe`.
 2. Install it.
 3. Open from the Start Menu.
-4. Configure Settings using a Sheet ID and Klear credentials.
+4. Configure Settings using a Sheet ID and the service account credentials.
 5. Process one PDF to Google Sheets.
 6. Process one PDF to Excel.
 7. Restart the app and confirm settings persist.
 
 ### Mac
 
-1. Build or download `HDProcessor.dmg`.
+1. Build or download the correct Mac DMG:
+   - Intel Mac: `HDProcessor-Intel.dmg`
+   - Apple Silicon Mac: `HDProcessor-AppleSilicon.dmg`
 2. Drag `HDProcessor.app` to Applications.
 3. Open the app.
-4. Configure Settings using a Sheet ID and Klear credentials.
+4. Configure Settings using a Sheet ID and the service account credentials.
 5. Process one PDF to Google Sheets.
 6. Process one PDF to Excel.
 7. Restart the app and confirm settings persist.
 
-For a client release, confirm the DMG is notarized:
+For a release build, confirm each DMG is notarized:
 
 ```bash
-spctl -a -vv -t open --context context:primary-signature dist/HDProcessor.dmg
+spctl -a -vv -t open --context context:primary-signature dist/HDProcessor-Intel.dmg
+spctl -a -vv -t open --context context:primary-signature dist/HDProcessor-AppleSilicon.dmg
 ```
 
 Expected: macOS accepts the DMG without the **Apple could not verify** warning. If Gatekeeper blocks it, the release was not built with Apple Developer signing/notarization secrets.
@@ -164,20 +167,20 @@ Expected:
 
 - macOS job runs the full test suite.
 - Windows job runs the full test suite.
-- Mac artifact is `HDProcessor.dmg`.
+- Mac artifacts are `HDProcessor-Intel.dmg` and `HDProcessor-AppleSilicon.dmg`.
 - Windows artifact is `HDProcessor-Setup.exe`.
-- Tagged releases attach both files.
+- Tagged releases attach all three files.
 
 ## Final Release Checklist
 
 - [ ] `python3 -m pytest -q` passes.
-- [ ] Google Sheets route tested with Klear service account.
+- [ ] Google Sheets route tested with the Klear Concepts service account.
 - [ ] Excel route tested.
 - [ ] Duplicate handling tested.
 - [ ] Batch handling tested.
 - [ ] Windows installer tested.
 - [ ] Mac DMG tested.
-- [ ] Mac DMG notarization verified for client release.
+- [ ] Mac DMG notarization verified for release.
 - [ ] GitHub Release assets verified.
 - [ ] No `service_account.json` committed.
 - [ ] No `config.json` committed.

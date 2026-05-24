@@ -200,19 +200,19 @@ jobs:
 
             **Mac Intel:** Download `HDProcessor-Intel.dmg`, open it, drag `HDProcessor.app` to Applications.
             **Mac Apple Silicon:** Download `HDProcessor-AppleSilicon.dmg`, open it, drag `HDProcessor.app` to Applications.
-            If this release was built with Klear's Apple Developer signing credentials, macOS
-            should open it normally. If macOS says Apple cannot verify the app, contact Klear
-            for a notarized build.
+            If this release was built with Apple Developer signing credentials, macOS
+            should open it normally. If macOS says Apple cannot verify the app, use a
+            notarized release build.
 
             **Windows:** Download `HDProcessor-Setup.exe`, double-click, follow the installer.
             If Windows SmartScreen shows a warning: click "More info" → "Run anyway".
 
-            **Google Sheets:** Klear Concepts manages the Google Cloud project, Sheets API,
+            **Google Sheets:** Klear Concepts owns the Google Cloud project, Sheets API,
             and service account. In Settings, paste the Sheet ID and browse to the
-            Klear-provided `service_account.json`.
+            `service_account.json` file for the Klear Concepts Google Sheets setup.
 
             ### What's included
             - Drag & drop up to 20 HD 812 adjustment PDFs
-            - Output to Google Sheets or Excel (.xlsx) — toggle in the app
-            - Correct credit/debit line item structure (Rule 1–5 parser)
+            - Output to Google Sheets or Excel (.xlsx)
+            - Standard 812 and RM returned-goods invoice support
             - Duplicate invoice detection with batch skip/add options

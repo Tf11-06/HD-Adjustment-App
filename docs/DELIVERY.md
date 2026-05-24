@@ -1,10 +1,10 @@
 # HD Adjustment Processor - Delivery Guide
 
-This guide is for Klear Concepts when preparing a client delivery. The client-facing setup lives in the main `README.md`.
+This guide is for preparing a Klear Concepts release. The public setup instructions live in the main `README.md`.
 
 ## Release Build
 
-Use GitHub Releases as the official client download location.
+Use GitHub Releases as the official Klear Concepts download location.
 
 1. Confirm tests pass:
 
@@ -24,7 +24,7 @@ Use GitHub Releases as the official client download location.
    - `HDProcessor-Intel.dmg`
    - `HDProcessor-AppleSilicon.dmg`
 
-4. Open the Release in GitHub and confirm both assets are present before sending the link.
+4. Open the Release in GitHub and confirm all three assets are present before sending the link.
 
 Manual build commands remain available:
 
@@ -36,14 +36,14 @@ bash installer/mac_dmg.sh
 ```
 
 Windows installers must be built on Windows. Mac DMGs must be built on macOS.
-The Windows installer is per-user and installs under `%LOCALAPPDATA%/Programs/HD Adjustment Processor` so clients do not need admin access.
+The Windows installer is per-user and installs under `%LOCALAPPDATA%/Programs/HD Adjustment Processor` so users do not need admin access.
 The released Mac assets are separate native builds: `HDProcessor-Intel.dmg` for Intel Macs and `HDProcessor-AppleSilicon.dmg` for Apple Silicon Macs.
 
 ## Mac Gatekeeper Fix
 
-If macOS shows **Apple could not verify "HDProcessor" is free of malware**, the DMG was not notarized by Apple. The reliable client-ready fix is Apple Developer ID signing and notarization.
+If macOS shows **Apple could not verify "HDProcessor" is free of malware**, the DMG was not notarized by Apple. The reliable release-ready fix is Apple Developer ID signing and notarization.
 
-Add these GitHub Actions secrets before cutting a client Mac release:
+Add these GitHub Actions secrets before cutting a Mac release:
 
 | Secret | Value |
 | --- | --- |
@@ -54,48 +54,48 @@ Add these GitHub Actions secrets before cutting a client Mac release:
 | `APPLE_TEAM_ID` | Apple Developer Team ID |
 | `APPLE_APP_SPECIFIC_PASSWORD` | App-specific password for the Apple ID |
 
-After these secrets are configured, push a new version tag. The macOS workflow signs `HDProcessor.app`, builds the DMG, signs the DMG, submits it to Apple's notary service, staples the notarization ticket, and uploads the notarized `HDProcessor.dmg`.
+After these secrets are configured, push a new version tag. The macOS workflow signs `HDProcessor.app`, builds the Intel and Apple Silicon DMGs, signs each DMG, submits them to Apple's notary service, staples the notarization tickets, and uploads the notarized release files.
 
-Unsigned internal builds can still be opened with **System Settings -> Privacy & Security -> Open Anyway**, but do not treat that as the final client delivery path.
+Unsigned internal builds can still be opened with **System Settings -> Privacy & Security -> Open Anyway**, but do not treat that as the final delivery path.
 
 ## Klear Google Setup
 
-For Google Sheets output, Klear Concepts owns and manages the Google Cloud setup. The client does not create the Cloud project or API credentials.
+For Google Sheets output, Klear Concepts owns and manages the Google Cloud setup. End users do not create the Cloud project or API credentials.
 
-1. Create or select Klear's Google Cloud project for this client.
+1. Create or select Klear Concepts' Google Cloud project for this app.
 2. Enable the Google Sheets API.
 3. Create a service account.
 4. Download the service account JSON key.
 5. Rename the file to `service_account.json`.
 6. Store it securely outside the Git repo.
-7. Send the file to the client through an approved secure channel when they need Google Sheets output.
+7. Share the file through an approved secure channel when Google Sheets output is needed.
 
-Never commit `service_account.json`, `.env` files, or real client config files.
+Never commit `service_account.json`, `.env` files, or real config files.
 
-## Client Sheet Setup
+## Google Sheet Setup
 
-The client may create the Google Sheet, or Klear may create it for them.
+Create a new Google Sheet or use an existing Klear Concepts sheet.
 
 1. Create a blank Google Sheet.
 2. Copy the Sheet ID from the URL.
-3. Open Klear's `service_account.json`.
+3. Open the `service_account.json` file.
 4. Copy the `client_email`.
 5. Share the Google Sheet with that email as **Editor**.
-6. Give the client the Sheet ID and the `service_account.json` file.
+6. Keep the Sheet ID and `service_account.json` available for app setup.
 
 The app creates the `Adjustments` worksheet headers on first write.
 
 ## Delivery Package
 
-For GitHub-based delivery, send the client:
+For GitHub-based delivery, provide:
 
 - Link to the latest GitHub Release.
-- Klear-provided `service_account.json`, if they will use Google Sheets.
-- The Sheet ID, if Klear created the sheet.
+- `service_account.json`, if Google Sheets output will be used.
+- The Sheet ID for the target Google Sheet.
 
 Do not send or include `config.json`. The app creates it after the user saves Settings.
 
-## Client Walkthrough
+## Setup Walkthrough
 
 1. Download the correct release asset:
    - Windows: `HDProcessor-Setup.exe`
@@ -104,7 +104,7 @@ Do not send or include `config.json`. The app creates it after the user saves Se
 2. Install the app.
 3. Open **Settings**.
 4. Paste the Sheet ID.
-5. Browse to the Klear-provided `service_account.json`.
+5. Browse to the `service_account.json` file.
 6. Choose an Excel file path too, if Excel output will be used.
 7. Save Settings.
 8. Drop one real Home Depot 812 PDF.
@@ -142,8 +142,8 @@ Settings are saved under the user's profile:
 | --- | --- | --- |
 | `Sheet ID not configured` | Settings were not saved | Paste the Sheet ID in Settings and save. |
 | `Excel file not configured` | Excel destination has no file path | Choose an `.xlsx` path in Settings. |
-| `Credentials file not found` | The saved credentials path is wrong | Browse to the Klear-provided `service_account.json` again. |
-| `Could not authenticate with Google` | Bad or wrong JSON key | Provide a fresh Klear service account key. |
+| `Credentials file not found` | The saved credentials path is wrong | Browse to the `service_account.json` file again. |
+| `Could not authenticate with Google` | Bad or wrong JSON key | Use a fresh service account key from Klear Concepts' Google Cloud setup. |
 | `Could not find the Google Sheet` | Wrong Sheet ID or missing share permission | Confirm Sheet ID and Editor access for the service account. |
 | `Could not connect to Google Sheets` | Network or Google API issue | Check internet, API status, and retry. |
 | `Could not read <file>` | Not a valid supported PDF | Test with a real Home Depot 812 adjustment PDF. |
